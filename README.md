@@ -19,4 +19,5 @@
 ## 作業二
 [40940112S_HW2.py](https://github.com/KazumiLine/LATIA112-1/blob/main/HW2/40940112S_HW2.py)
 ## 作業三
+[40940112S_HW2.py](https://github.com/KazumiLine/LATIA112-1/blob/main/HW3)
 # 專題連結區
