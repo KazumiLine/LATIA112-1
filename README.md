@@ -1,23 +1,36 @@
+# LlamaIndex Agent Demo
 
-**課名：學習分析工具實務應用 LATIA 112-1**  
-**授課教師：** 廖執善 老師  
-**姓名：** 林翊丞  
-**系級：** 電機系113級  
-  
-# 目錄
-* [**課程筆記區**](https://github.com/KazumiLine/LATIA112-1#課程筆記區)  
-* [**作業連結區**](https://github.com/KazumiLine/LATIA112-1#作業連結區)  
-  * [作業一](https://github.com/KazumiLine/LATIA112-1#作業一)  
-  * [作業二](https://github.com/KazumiLine/LATIA112-1#作業二)
-  * [作業三](https://github.com/KazumiLine/LATIA112-1#作業三)
-* [**專題連結區**](https://github.com/KazumiLine/LATIA112-1#專題連結區)
+Features:
+- Product Q&A via SQL generation over `products` table (QueryEngineTool)
+- Order Q&A via SQL generation over `orders` tables (QueryEngineTool)
+- Purchase/After-sales answers from local docs under `docs/` (QueryEngineTool)
+- Place orders into SQLite DB (FunctionTool)
+- Request more info when user query is underspecified (FunctionTool)
+- Per-user persistent memory across sessions
 
-# 課程筆記區 
-# 作業連結區 
-## 作業一
-[40940112S_HW1.ipynb](https://github.com/KazumiLine/LATIA112-1/blob/main/HW1/40940112S_HW1.ipynb)
-## 作業二
-[40940112S_HW2.py](https://github.com/KazumiLine/LATIA112-1/blob/main/HW2/40940112S_HW2.py)
-## 作業三
-[40940112S_HW2.py](https://github.com/KazumiLine/LATIA112-1/blob/main/HW3)
-# 專題連結區
+Setup:
+- Python 3.10+.
+- If venv creation is blocked, you can still run with system Python and `--break-system-packages` when installing.
+
+Install:
+1. python3 -m venv .venv && source .venv/bin/activate  # if available
+2. pip install --upgrade pip
+3. pip install -r requirements.txt  # add --break-system-packages if needed
+4. cp .env.example .env  # optional if using OpenAI
+
+Run:
+- Initialize DB and start chat
+```bash
+python -m app.main --init-db --user alice@example.com
+```
+
+Examples:
+- 查詢產品："查 SKU-1002 的價格與庫存"
+- 查詢訂單："查詢 alice@example.com 最近訂單"
+- 下單："幫我下單 SKU-1001 2個 給 alice@example.com"
+- 售後："如何退貨？保固多久？"
+
+Env Vars:
+- `OPENAI_API_KEY` to use OpenAI; otherwise a mock LLM is used.
+- `APP_DB_PATH` (default: `storage/app.db`)
+- `APP_DOCS_DIR` (default: `docs/`)
