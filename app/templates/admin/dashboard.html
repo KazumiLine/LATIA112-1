@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+
+{% block title %}管理後台 - 儀表板{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-speedometer2"></i> 儀表板
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshStats()">
+                <i class="bi bi-arrow-clockwise"></i> 重新整理
+            </button>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+            <i class="bi bi-calendar3"></i> 本週
+        </button>
+        <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="#" onclick="setTimeRange('week')">本週</a></li>
+            <li><a class="dropdown-item" href="#" onclick="setTimeRange('month')">本月</a></li>
+            <li><a class="dropdown-item" href="#" onclick="setTimeRange('quarter')">本季</a></li>
+            <li><a class="dropdown-item" href="#" onclick="setTimeRange('year')">本年</a></li>
+        </ul>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <div class="stats-number" id="totalProducts">{{ total_products }}</div>
+                <div class="stats-label">
+                    <i class="bi bi-box"></i> 總商品數
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <div class="stats-number" id="totalOrders">{{ total_orders }}</div>
+                <div class="stats-label">
+                    <i class="bi bi-cart"></i> 總訂單數
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <div class="stats-number" id="totalUsers">{{ total_users }}</div>
+                <div class="stats-label">
+                    <i class="bi bi-people"></i> 總用戶數
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stats-card h-100">
+            <div class="card-body text-center">
+                <div class="stats-number" id="monthlyRevenue">$0</div>
+                <div class="stats-label">
+                    <i class="bi bi-currency-dollar"></i> 本月營收
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-xl-8 col-lg-7">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-graph-up"></i> 營收趨勢
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="revenueChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-4 col-lg-5">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-pie-chart"></i> 商品分類分布
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="categoryChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Orders and Quick Actions -->
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-clock-history"></i> 最近訂單
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>訂單編號</th>
+                                <th>客戶</th>
+                                <th>金額</th>
+                                <th>狀態</th>
+                                <th>建立時間</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in recent_orders %}
+                            <tr>
+                                <td>#{{ order.id }}</td>
+                                <td>{{ order.user.email if order.user else 'N/A' }}</td>
+                                <td>{{ "NT$ {:,.0f}".format(order.total) }}</td>
+                                <td>
+                                    {% if order.status.value == 1 %}
+                                        <span class="badge bg-warning">待付款</span>
+                                    {% elif order.status.value == 2 %}
+                                        <span class="badge bg-success">已付款</span>
+                                    {% elif order.status.value == 3 %}
+                                        <span class="badge bg-info">已發貨</span>
+                                    {% elif order.status.value == 4 %}
+                                        <span class="badge bg-danger">退款</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-primary" onclick="viewOrder({{ order.id }})">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="/admin/orders" class="btn btn-primary">
+                        查看所有訂單 <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-lightning"></i> 快速操作
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/admin/products" class="btn btn-outline-primary">
+                        <i class="bi bi-plus-circle"></i> 新增商品
+                    </a>
+                    <a href="/admin/orders" class="btn btn-outline-success">
+                        <i class="bi bi-cart-check"></i> 處理訂單
+                    </a>
+                    <a href="/admin/users" class="btn btn-outline-info">
+                        <i class="bi bi-person-plus"></i> 管理用戶
+                    </a>
+                    <button class="btn btn-outline-warning" onclick="exportData()">
+                        <i class="bi bi-download"></i> 匯出資料
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- System Status -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-server"></i> 系統狀態
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>資料庫連接</span>
+                    <span class="badge bg-success">正常</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>API 服務</span>
+                    <span class="badge bg-success">正常</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span>LINE Bot</span>
+                    <span class="badge bg-success">正常</span>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <span>最後更新</span>
+                    <small class="text-muted" id="lastUpdate">{{ "now" }}</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Order Status Summary -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-list-check"></i> 訂單狀態摘要
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <div class="border-end">
+                            <h4 class="text-warning" id="pendingOrders">0</h4>
+                            <p class="text-muted">待付款</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border-end">
+                            <h4 class="text-success" id="paidOrders">0</h4>
+                            <p class="text-muted">已付款</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="border-end">
+                            <h4 class="text-info" id="shippedOrders">0</h4>
+                            <p class="text-muted">已發貨</p>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div>
+                            <h4 class="text-danger" id="refundOrders">0</h4>
+                            <p class="text-muted">退款</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let revenueChart, categoryChart;
+let currentTimeRange = 'week';
+
+// Initialize charts when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+    loadDashboardData();
+    setInterval(loadDashboardData, 30000); // Refresh every 30 seconds
+});
+
+function initializeCharts() {
+    // Revenue Chart
+    const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+    revenueChart = new Chart(revenueCtx, {
+        type: 'line',
+        data: {
+            labels: ['1月', '2月', '3月', '4月', '5月', '6月'],
+            datasets: [{
+                label: '營收 (NT$)',
+                data: [0, 0, 0, 0, 0, 0],
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return 'NT$ ' + value.toLocaleString();
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Category Chart
+    const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+    categoryChart = new Chart(categoryCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['電子產品', '服飾', '家居用品', '其他'],
+            datasets: [{
+                data: [0, 0, 0, 0],
+                backgroundColor: [
+                    '#667eea',
+                    '#764ba2',
+                    '#f093fb',
+                    '#f5576c'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom'
+                }
+            }
+        }
+    });
+}
+
+async function loadDashboardData() {
+    try {
+        const response = await apiRequest('/api/stats');
+        
+        // Update statistics
+        document.getElementById('totalProducts').textContent = response.total_products;
+        document.getElementById('totalOrders').textContent = response.total_orders;
+        document.getElementById('totalUsers').textContent = response.total_users;
+        document.getElementById('monthlyRevenue').textContent = formatCurrency(response.monthly_revenue);
+        
+        // Update charts
+        updateCharts(response);
+        
+        // Update last update time
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('zh-TW');
+        
+        // Update order status summary
+        await updateOrderStatusSummary();
+        
+    } catch (error) {
+        console.error('Failed to load dashboard data:', error);
+        showToast('錯誤', '無法載入儀表板資料', 'error');
+    }
+}
+
+function updateCharts(data) {
+    // Update revenue chart with sample data (in real app, this would come from API)
+    const sampleRevenue = [120000, 150000, 180000, 200000, 220000, 250000];
+    revenueChart.data.datasets[0].data = sampleRevenue;
+    revenueChart.update();
+    
+    // Update category chart
+    if (data.category_stats && data.category_stats.length > 0) {
+        const labels = data.category_stats.map(item => item.category);
+        const values = data.category_stats.map(item => item.count);
+        
+        categoryChart.data.labels = labels;
+        categoryChart.data.datasets[0].data = values;
+        categoryChart.update();
+    }
+}
+
+async function updateOrderStatusSummary() {
+    try {
+        const response = await apiRequest('/api/orders');
+        
+        const statusCounts = {
+            pending: 0,
+            paid: 0,
+            shipped: 0,
+            refund: 0
+        };
+        
+        response.forEach(order => {
+            switch(order.status) {
+                case 1: statusCounts.pending++; break;
+                case 2: statusCounts.paid++; break;
+                case 3: statusCounts.shipped++; break;
+                case 4: statusCounts.refund++; break;
+            }
+        });
+        
+        document.getElementById('pendingOrders').textContent = statusCounts.pending;
+        document.getElementById('paidOrders').textContent = statusCounts.paid;
+        document.getElementById('shippedOrders').textContent = statusCounts.shipped;
+        document.getElementById('refundOrders').textContent = statusCounts.refund;
+        
+    } catch (error) {
+        console.error('Failed to update order status summary:', error);
+    }
+}
+
+function refreshStats() {
+    loadDashboardData();
+    showToast('成功', '資料已重新整理', 'success');
+}
+
+function setTimeRange(range) {
+    currentTimeRange = range;
+    loadDashboardData();
+    showToast('成功', `已切換至${getTimeRangeText(range)}`, 'info');
+}
+
+function getTimeRangeText(range) {
+    const texts = {
+        'week': '本週',
+        'month': '本月',
+        'quarter': '本季',
+        'year': '本年'
+    };
+    return texts[range] || '本週';
+}
+
+function viewOrder(orderId) {
+    window.location.href = `/admin/orders?order=${orderId}`;
+}
+
+function exportData() {
+    showToast('資訊', '匯出功能開發中...', 'info');
+}
+
+// Auto-refresh functionality
+let autoRefreshInterval;
+function toggleAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        showToast('資訊', '自動重新整理已停用', 'info');
+    } else {
+        autoRefreshInterval = setInterval(loadDashboardData, 30000);
+        showToast('成功', '自動重新整理已啟用 (30秒)', 'success');
+    }
+}
+</script>
+{% endblock %}

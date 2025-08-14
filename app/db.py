@@ -10,22 +10,22 @@ Base = declarative_base()
 
 class Product(Base):
     __tablename__ = "products"
-    id = Column(Integer, primary_key=True, comment="產品唯一 ID", key="id")
-    sku = Column(String(64), unique=True, nullable=False, comment="產品 SKU（唯一識別碼）", key="sku")
-    name = Column(String(255), nullable=False, comment="產品名稱", key="name")
-    description = Column(Text, nullable=True, comment="產品描述", key="description")
-    price = Column(Float, nullable=False, comment="產品價格（浮點數，單位：元）", key="price")
-    stock = Column(Integer, nullable=False, default=0, comment="產品庫存數量", key="stock")
+    id = Column(Integer, primary_key=True)
+    sku = Column(String(64), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    price = Column(Float, nullable=False)
+    stock = Column(Integer, nullable=False, default=0)
 
 class Customer(Base):
     __tablename__ = "customers"
-    id = Column(Integer, primary_key=True, comment="顧客唯一 ID", key="id")
-    email = Column(String(255), unique=True, nullable=False, comment="顧客電子郵件", key="email")
-    name = Column(String(255), nullable=False, comment="顧客名稱", key="name")
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    name = Column(String(255), nullable=False)
 
 class Order(Base):
     __tablename__ = "orders"
-    id = Column(Integer, primary_key=True, comment="訂單唯一 ID", key="id")
+    id = Column(Integer, primary_key=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
     status = Column(String(50), nullable=False, default="created")
     created_at = Column(DateTime, server_default=func.now())
@@ -152,4 +152,4 @@ def get_sql_database():
     if SQLDatabase is None:
         raise RuntimeError("LlamaIndex is not installed")
     engine = get_engine()
-    return SQLDatabase(engine, include_tables=[Product.__tablename__, Order.__tablename__, OrderItem.__tablename__, Customer.__tablename__])
+    return SQLDatabase(engine, include_tables=["products", "customers", "orders", "order_items"])

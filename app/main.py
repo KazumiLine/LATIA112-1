@@ -1,12 +1,13 @@
 import argparse
+import os
 from dotenv import load_dotenv
 
 from app.db import init_db
-from app.agent import AgentBuilder
-import asyncio
+from app.agent import build_user_agent
 
-async def run_chat(user_id: str):
-    agent = AgentBuilder(user_id)
+
+def run_chat(user_id: str):
+    agent = build_user_agent(user_id)
     print("Type 'exit' to quit. Type 'help' for hints.")
     while True:
         try:
@@ -21,8 +22,8 @@ async def run_chat(user_id: str):
             print("Examples:\n- 產品有什麼？\n- 查詢 SKU-1002 的價格與庫存\n- 查詢 alice@example.com 的訂單\n- 我想下單：SKU-1001 2個，寄給 alice@example.com\n- 如何退貨？售後服務怎麼處理？")
             continue
 
-        response = await agent.chat(user_input)
-        print("[Agent Response]", str(response))
+        response = agent.chat(user_input)
+        print(str(response))
 
 
 def main():
@@ -38,7 +39,7 @@ def main():
         init_db(seed=True)
         print("Database initialized and seeded.")
 
-    asyncio.run(run_chat(args.user_id))
+    run_chat(args.user_id)
 
 
 if __name__ == "__main__":
