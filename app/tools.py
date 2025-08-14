@@ -4,14 +4,14 @@ from typing import List, Dict, Any, Optional
 from llama_index.core.tools import QueryEngineTool, ToolMetadata, FunctionTool
 from llama_index.core.indices.vector_store import VectorStoreIndex
 from llama_index.core import SimpleDirectoryReader
-from llama_index.experimental.query_engine import NLSQLTableQueryEngine
+from llama_index.core.query_engine import NLSQLTableQueryEngine
 
-from .db import get_sql_database, place_order_in_db, OrderItemInput
+from .db import get_sql_database, place_order_in_db, OrderItemInput, Product, Order, Customer, OrderItem
 
 
 def build_product_sql_tool() -> QueryEngineTool:
     sql_db = get_sql_database()
-    qe = NLSQLTableQueryEngine(sql_database=sql_db, tables=["products"])
+    qe = NLSQLTableQueryEngine(sql_database=sql_db, tables=[Product.__table__])
     return QueryEngineTool(
         query_engine=qe,
         metadata=ToolMetadata(
@@ -26,7 +26,7 @@ def build_product_sql_tool() -> QueryEngineTool:
 
 def build_order_sql_tool() -> QueryEngineTool:
     sql_db = get_sql_database()
-    qe = NLSQLTableQueryEngine(sql_database=sql_db, tables=["orders", "order_items", "customers", "products"])
+    qe = NLSQLTableQueryEngine(sql_database=sql_db, tables=[Order.__table__, OrderItem.__table__, Customer.__table__, Product.__table__])
     return QueryEngineTool(
         query_engine=qe,
         metadata=ToolMetadata(
