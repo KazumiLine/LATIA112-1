@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}商品細項管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-list-ul"></i> 商品細項 - {{ product.name }}</h3>
+    <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">返回商品</a>
+  </div>
+  <div class="card mb-3">
+    <div class="card-header">新增細項</div>
+    <div class="card-body">
+      <form method="post">
+        <div class="row g-2">
+          <div class="col-md-3"><input class="form-control" name="name" placeholder="名稱" required /></div>
+          <div class="col-md-2"><input class="form-control" type="number" name="price" placeholder="價格" required /></div>
+          <div class="col-md-2"><input class="form-control" type="number" name="stock" placeholder="庫存" required /></div>
+          <div class="col-md-3"><input class="form-control" name="discount" placeholder="折扣描述" /></div>
+          <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">新增</button></div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>名稱</th>
+              <th>價格</th>
+              <th>庫存</th>
+              <th>折扣</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in items %}
+            <tr>
+              <td>#{{ it.id }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_item_edit', item_id=it.id) }}" class="row g-2">
+                  <div class="col-md-3"><input class="form-control" name="name" value="{{ it.name }}" /></div>
+                  <div class="col-md-2"><input class="form-control" type="number" name="price" value="{{ it.price }}" /></div>
+                  <div class="col-md-2"><input class="form-control" type="number" name="stock" value="{{ it.stock }}" /></div>
+                  <div class="col-md-3"><input class="form-control" name="discount" value="{{ it.discount }}" /></div>
+                  <div class="col-md-2 d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-save"></i></button>
+                </form>
+                    <form method="post" action="{{ url_for('admin_item_delete', item_id=it.id) }}" onsubmit="return confirm('確定刪除？')">
+                      <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
+                    </form>
+                  </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

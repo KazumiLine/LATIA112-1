@@ -256,7 +256,7 @@ class Order(Base, TimestampMixin):
     order_items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     delivery = relationship("Delivery", back_populates="order", uselist=False)
     payment = relationship("Payment", back_populates="order", uselist=False)
-    logs = relationship("OrderLog", backref="order")
+    logs = relationship("OrderLog", back_populates="order", cascade="all, delete-orphan")
 
 class OrderItem(Base, TimestampMixin):
     __tablename__ = "order_items"
@@ -325,7 +325,7 @@ class OrderLog(Base, TimestampMixin):
     to_status = Column(String(50), nullable=True)
     note = Column(Text, nullable=True)
 
-    order = relationship("Order", backref="logs")
+    order = relationship("Order", back_populates="logs")
 
 class ProductFullView(Base):
     __tablename__ = "product_full_view"

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}優惠券管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="card mb-3">
+    <div class="card-header">新增優惠券</div>
+    <div class="card-body">
+      <form method="post">
+        <div class="row g-2">
+          <div class="col-md-2">
+            <select class="form-select" name="type">
+              <option value="1">打折(%)</option>
+              <option value="2">定額折扣</option>
+            </select>
+          </div>
+          <div class="col-md-2"><input class="form-control" type="number" name="discount" placeholder="折數或金額" required /></div>
+          <div class="col-md-2"><input class="form-control" type="number" name="min_price" placeholder="最低金額" required /></div>
+          <div class="col-md-2"><input class="form-control" type="number" name="remain_count" placeholder="剩餘數" required /></div>
+          <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">建立</button></div>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>類型</th>
+              <th>折扣</th>
+              <th>最低金額</th>
+              <th>剩餘數</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in coupons %}
+            <tr>
+              <td>#{{ c.id }}</td>
+              <td>{{ c.type.name }}</td>
+              <td>{{ c.discount }}</td>
+              <td>{{ c.min_price }}</td>
+              <td>{{ c.remain_count }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_coupons_edit', cid=c.id) }}" class="row g-2 align-items-center">
+                  <div class="col-md-2">
+                    <select class="form-select" name="type">
+                      <option value="1" {% if c.type.value==1 %}selected{% endif %}>打折(%)</option>
+                      <option value="2" {% if c.type.value==2 %}selected{% endif %}>定額折扣</option>
+                    </select>
+                  </div>
+                  <div class="col-md-2"><input class="form-control" type="number" name="discount" value="{{ c.discount }}" /></div>
+                  <div class="col-md-2"><input class="form-control" type="number" name="min_price" value="{{ c.min_price }}" /></div>
+                  <div class="col-md-2"><input class="form-control" type="number" name="remain_count" value="{{ c.remain_count }}" /></div>
+                  <div class="col-md-2 d-flex gap-1">
+                    <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-save"></i></button>
+                </form>
+                    <form method="post" action="{{ url_for('admin_coupons_delete', cid=c.id) }}" onsubmit="return confirm('確定刪除？')">
+                      <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
+                    </form>
+                  </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

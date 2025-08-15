@@ -55,7 +55,6 @@ def admin_required(level: AdminLevel = AdminLevel.STAFF):
             if not user:
                 session.clear()
                 return redirect(url_for('login'))
-            # Simple: treat User.level as authority
             if user.level.value < level.value:
                 flash('權限不足', 'danger')
                 return redirect(url_for('admin_dashboard'))
@@ -128,6 +127,16 @@ def admin_dashboard():
                          recent_orders=recent_orders)
 
 # -----------------
+# Admin: Orders
+# -----------------
+
+@app.route('/admin/orders')
+@admin_required(AdminLevel.STAFF)
+def admin_orders():
+    orders = Order.query.order_by(Order.created_at.desc()).all()
+    return render_template('admin/orders.html', orders=orders)
+
+# -----------------
 # Admin: Product CRUD
 # -----------------
 
@@ -186,6 +195,92 @@ def admin_product_delete(pid):
     return redirect(url_for('admin_products'))
 
 # -----------------
+# Admin: Product Items
+# -----------------
+
+@app.route('/admin/products/<int:pid>/items', methods=['GET', 'POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_product_items(pid):
+    p = Product.query.get_or_404(pid)
+    if request.method == 'POST':
+        name = request.form.get('name','').strip()
+        price = int(request.form.get('price','0') or 0)
+        stock = int(request.form.get('stock','0') or 0)
+        if not name or price <= 0:
+            flash('名稱與價格必填', 'warning')
+        else:
+            it = ProductItem(product_id=p.id, name=name, price=price, stock=stock, discount=request.form.get('discount',''))
+            db.session.add(it)
+            db.session.commit()
+            flash('細項已新增', 'success')
+        return redirect(url_for('admin_product_items', pid=pid))
+    items = ProductItem.query.filter_by(product_id=p.id).all()
+    return render_template('admin/product_items.html', product=p, items=items)
+
+@app.route('/admin/items/<int:item_id>/edit', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_item_edit(item_id):
+    it = ProductItem.query.get_or_404(item_id)
+    it.name = request.form.get('name', it.name)
+    it.price = int(request.form.get('price', it.price))
+    it.stock = int(request.form.get('stock', it.stock))
+    it.discount = request.form.get('discount', it.discount)
+    db.session.commit()
+    flash('細項已更新', 'success')
+    return redirect(url_for('admin_product_items', pid=it.product_id))
+
+@app.route('/admin/items/<int:item_id>/delete', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_item_delete(item_id):
+    it = ProductItem.query.get_or_404(item_id)
+    pid = it.product_id
+    db.session.delete(it)
+    db.session.commit()
+    flash('細項已刪除', 'info')
+    return redirect(url_for('admin_product_items', pid=pid))
+
+# -----------------
+# Admin: Coupons
+# -----------------
+
+@app.route('/admin/coupons', methods=['GET', 'POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_coupons():
+    if request.method == 'POST':
+        ctype = int(request.form.get('type'))
+        discount = int(request.form.get('discount'))
+        min_price = int(request.form.get('min_price'))
+        remain = int(request.form.get('remain_count'))
+        cp = Coupon(store_id=1, type=CouponType(ctype), discount=discount, min_price=min_price, remain_count=remain)
+        db.session.add(cp)
+        db.session.commit()
+        flash('優惠券已建立', 'success')
+        return redirect(url_for('admin_coupons'))
+    coupons = Coupon.query.order_by(Coupon.id.desc()).all()
+    return render_template('admin/coupons.html', coupons=coupons)
+
+@app.route('/admin/coupons/<int:cid>/edit', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_coupons_edit(cid):
+    cp = Coupon.query.get_or_404(cid)
+    cp.type = CouponType(int(request.form.get('type', cp.type.value)))
+    cp.discount = int(request.form.get('discount', cp.discount))
+    cp.min_price = int(request.form.get('min_price', cp.min_price))
+    cp.remain_count = int(request.form.get('remain_count', cp.remain_count))
+    db.session.commit()
+    flash('優惠券已更新', 'success')
+    return redirect(url_for('admin_coupons'))
+
+@app.route('/admin/coupons/<int:cid>/delete', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_coupons_delete(cid):
+    cp = Coupon.query.get_or_404(cid)
+    db.session.delete(cp)
+    db.session.commit()
+    flash('優惠券已刪除', 'info')
+    return redirect(url_for('admin_coupons'))
+
+# -----------------
 # Admin: RawPage management with TinyMCE
 # -----------------
 
@@ -232,8 +327,64 @@ def admin_raw_page_edit(rid):
     return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
 
 # -----------------
-# APIs with workflow logging
+# APIs with workflow logging and creation
 # -----------------
+
+@app.route('/api/orders', methods=['POST'])
+def api_create_order():
+    try:
+        data = request.get_json() or {}
+        email = data.get('email')
+        items = data.get('items', [])  # [{product_item_id, quantity}]
+        coupon_code = data.get('coupon_code')  # simple string matches Coupon.id? we use id numeric or ignore code
+        if not email or not items:
+            return jsonify({'success': False, 'error': '缺少 email 或 items'}), 400
+        # find or create user
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            user = User(account=email.split('@')[0], password=generate_password_hash('changeme'), name=email.split('@')[0], email=email, level=UserLevel.FIRST)
+            db.session.add(user)
+            db.session.flush()
+        # compute total and validate stock
+        total = 0
+        order_items = []
+        for it in items:
+            pii = ProductItem.query.get(int(it['product_item_id']))
+            qty = int(it['quantity'])
+            if not pii or qty <= 0:
+                return jsonify({'success': False, 'error': '無效的商品或數量'}), 400
+            if pii.stock < qty:
+                return jsonify({'success': False, 'error': f'庫存不足: {pii.name}'}), 400
+            total += pii.price * qty
+            order_items.append((pii, qty))
+        # apply coupon if any (use first coupon with remain and min_price)
+        discount_applied = 0
+        if coupon_code:
+            cp = Coupon.query.get(int(coupon_code)) if coupon_code.isdigit() else None
+            if cp and cp.remain_count > 0 and total >= cp.min_price:
+                if cp.type == CouponType.DISCOUNT_PERCENT:
+                    discount_applied = int(total * (cp.discount/100.0))
+                else:
+                    discount_applied = cp.discount
+                cp.remain_count -= 1
+        total = max(0, total - discount_applied)
+        # create order
+        order = Order(store_id=1, user_id=user.id, total=total, status=OrderStatus.PENDING, remark=data.get('remark'), coupon=str(coupon_code) if coupon_code else None)
+        db.session.add(order)
+        db.session.flush()
+        # create order items and decrement stock
+        for pii, qty in order_items:
+            db.session.add(OrderItem(order_id=order.id, product_item_id=pii.id, quantity=qty))
+            pii.stock -= qty
+        # create payment pending
+        order.payment = Payment(amount=total, status=PaymentStatus.PENDING, payment_method=data.get('payment_method','credit_card'), details='')
+        # log
+        db.session.add(OrderLog(order_id=order.id, action='create', from_status=None, to_status=str(OrderStatus.PENDING.name), note=f'discount={discount_applied}'))
+        db.session.commit()
+        return jsonify({'success': True, 'order_id': order.id, 'total': total, 'discount': discount_applied})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
 
 @app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
 def api_update_order_status(order_id):
@@ -246,6 +397,17 @@ def api_update_order_status(order_id):
             return jsonify({'success': False, 'error': '非法狀態轉移'}), 400
         if from_status == OrderStatus.PAID and to_status not in [OrderStatus.SHIPPED, OrderStatus.REFUND]:
             return jsonify({'success': False, 'error': '非法狀態轉移'}), 400
+        # Sync payment status
+        if to_status == OrderStatus.PAID:
+            if order.payment:
+                order.payment.status = PaymentStatus.PAID
+        if to_status == OrderStatus.REFUND:
+            # restock items
+            for oi in order.order_items:
+                if oi.product_item:
+                    oi.product_item.stock += oi.quantity
+            if order.payment:
+                order.payment.status = PaymentStatus.REFUNDED
         order.status = to_status
         log = OrderLog(order_id=order.id, action='status_change', from_status=str(from_status.name), to_status=str(to_status.name), note=data.get('note'))
         db.session.add(log)
@@ -256,7 +418,9 @@ def api_update_order_status(order_id):
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 400
 
-# Existing APIs below (products, users, stats)... unchanged except already fixed above
+# -----------------
+# Existing APIs (products, users, stats) remain below
+# -----------------
 
 @app.route('/api/products', methods=['GET'])
 def api_get_products():
@@ -284,10 +448,9 @@ def api_get_products():
     return jsonify(result)
 
 @app.route('/api/products', methods=['POST'])
-def api_create_product():
+def api_create_product_api():
     try:
         data = request.get_json() or {}
-        # Accept both new and legacy field names
         catalog = data.get('category') or data.get('catalog') or '未分類'
         descriptions = data.get('outline') or data.get('descriptions') or ''
 
@@ -400,7 +563,6 @@ def api_get_stats():
     total_orders = Order.query.count()
     total_users = User.query.count()
     
-    # Monthly revenue
     now = datetime.now()
     start_month = datetime(now.year, now.month, 1)
     monthly_orders = Order.query.filter(
@@ -409,7 +571,6 @@ def api_get_stats():
     ).all()
     monthly_revenue = sum(order.total for order in monthly_orders)
     
-    # Product categories
     categories = db.session.query(Product.catalog, db.func.count(Product.id)).group_by(Product.catalog).all()
     category_stats = [{'category': cat, 'count': count} for cat, count in categories]
     
