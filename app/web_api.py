@@ -39,8 +39,8 @@ def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if 'user_id' not in session:
-            flash('請先登入', 'warning')
-            return redirect(url_for('login'))
+            # redirect users to appropriate login
+            return redirect(url_for('user_login'))
         return f(*args, **kwargs)
     return wrapper
 
@@ -48,16 +48,9 @@ def admin_required(level: AdminLevel = AdminLevel.STAFF):
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
-            if 'user_id' not in session:
-                flash('請先登入', 'warning')
-                return redirect(url_for('login'))
-            user = User.query.get(session['user_id'])
-            if not user:
-                session.clear()
-                return redirect(url_for('login'))
-            if user.level.value < level.value:
-                flash('權限不足', 'danger')
-                return redirect(url_for('admin_dashboard'))
+            if 'user_id' not in session or session.get('user_type') != 'admin':
+                return redirect(url_for('admin_login'))
+            # Optional: further level checks could be added
             return f(*args, **kwargs)
         return wrapper
     return decorator
@@ -66,29 +59,38 @@ def admin_required(level: AdminLevel = AdminLevel.STAFF):
 # Auth routes
 # -----------------
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
     if request.method == 'POST':
-        account = request.form.get('account')
-        password = request.form.get('password')
-        user = User.query.filter_by(account=account).first()
-        # Testing mode: bypass password hash checking; auto-create user if missing
-        if not user:
-            user = User(account=account, password=generate_password_hash(password or 'changeme'), name=account, email=f"{account}@example.com", level=UserLevel.THIRD)
-            db.session.add(user)
-            db.session.commit()
-        session['user_id'] = user.id
-        session.permanent = True
-        flash('登入成功', 'success')
-        return redirect(url_for('admin_dashboard'))
-    return render_template('auth/login.html')
+        username = request.form.get('username') or request.form.get('account') or ''
+        password = request.form.get('password') or ''
+        # Demo admin credential
+        if username == 'admin' and password == 'admin1234':
+            # In a real app, lookup Admin and its store
+            session['user_id'] = 0
+            session['user_type'] = 'admin'
+            session['username'] = 'admin'
+            session['store_id'] = int(request.form.get('store_id', 1))
+            session.permanent = True
+            flash('管理員登入成功', 'success')
+            return redirect(url_for('admin_dashboard'))
+        flash('帳號或密碼錯誤', 'danger')
+    return render_template('login.html')
 
+@app.route('/admin/logout')
+@admin_required()
+def admin_logout():
+    session.clear()
+    flash('已登出管理後台', 'info')
+    return redirect(url_for('admin_login'))
+
+# Legacy user /logout -> redirect to homepage
 @app.route('/logout')
 @login_required
 def logout():
     session.clear()
     flash('已登出', 'info')
-    return redirect(url_for('login'))
+    return redirect(url_for('index'))
 
 # -----------------
 # Health and metrics
@@ -210,7 +212,7 @@ def generate_ai_response(message):
 # -----------------
 
 @app.route('/admin')
-@login_required
+@admin_required(AdminLevel.STAFF)
 def admin_dashboard():
     total_products = Product.query.count()
     total_orders = Order.query.count()
