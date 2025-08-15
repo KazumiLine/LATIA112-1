@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}我的儀表板{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h3 class="mb-3"><i class="bi bi-person-circle"></i> 我的儀表板</h3>
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header"><i class="bi bi-receipt"></i> 訂單歷史</div>
+        <div class="card-body">
+          {% if orders and orders|length > 0 %}
+          <div class="table-responsive">
+            <table class="table table-hover">
+              <thead><tr><th>#</th><th>金額</th><th>狀態</th><th>時間</th></tr></thead>
+              <tbody>
+                {% for o in orders %}
+                <tr>
+                  <td>#{{ o.id }}</td>
+                  <td>NT$ {{ '{:,}'.format(o.total) }}</td>
+                  <td>{{ o.status.name if o.status else o.status }}</td>
+                  <td>{{ o.created_at.strftime('%Y-%m-%d %H:%M') if o.created_at }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="text-muted">目前沒有訂單</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header"><i class="bi bi-cart3"></i> 購物車</div>
+        <div class="card-body">
+          <div id="udCart"></div>
+          <button class="btn btn-primary mt-2" onclick="showCart()">前往結帳</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><i class="bi bi-person"></i> 個人資料</div>
+        <div class="card-body">
+          <div class="text-muted">編輯個人資料功能即將推出。</div>
+          <a class="btn btn-outline-secondary mt-2" href="/chat"><i class="bi bi-chat-dots"></i> 聯繫 AI/真人客服</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function renderUDCart(){
+    const cart = JSON.parse(localStorage.getItem('cart')||'[]');
+    const el = document.getElementById('udCart');
+    if (cart.length===0){ el.innerHTML = '<div class="text-muted">購物車為空</div>'; return; }
+    el.innerHTML = cart.map(i=>`#${i.productItemId} x ${i.quantity}`).join('<br>');
+  }
+  document.addEventListener('DOMContentLoaded', renderUDCart);
+</script>
+{% endblock %}
