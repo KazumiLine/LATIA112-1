@@ -2,7 +2,19 @@
 {% block title %}管理後台 - 訂單管理{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
-  <h3 class="mb-3"><i class="bi bi-receipt"></i> 訂單管理</h3>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-cart"></i> 訂單管理</h3>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-primary" onclick="exportOrders()">
+        <i class="bi bi-download"></i> 匯出訂單
+      </button>
+      <button class="btn btn-primary" onclick="showModal('filterOrdersModal')">
+        <i class="bi bi-funnel"></i> 篩選訂單
+      </button>
+    </div>
+  </div>
+
+  <!-- Orders Table -->
   <div class="card">
     <div class="card-body">
       <div class="table-responsive">
@@ -11,7 +23,8 @@
             <tr>
               <th>訂單編號</th>
               <th>客戶</th>
-              <th>金額</th>
+              <th>商品</th>
+              <th>總額</th>
               <th>狀態</th>
               <th>建立時間</th>
               <th>操作</th>
@@ -20,9 +33,47 @@
           <tbody>
             {% for o in orders %}
             <tr>
-              <td>#{{ o.id }}</td>
-              <td>{{ o.user.email if o.user else '—' }}</td>
-              <td>NT$ {{ o.total }}</td>
+              <td>
+                <div class="fw-bold">#{{ o.id }}</div>
+                {% if o.coupon %}
+                  <small class="text-muted">優惠券: {{ o.coupon }}</small>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex align-items-center">
+                  <div class="avatar me-2">
+                    <i class="bi bi-person-circle text-primary" style="font-size: 1.5rem;"></i>
+                  </div>
+                  <div>
+                    <div class="fw-bold">{{ o.user.name if o.user else '—' }}</div>
+                    <small class="text-muted">{{ o.user.email if o.user else '—' }}</small>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="d-flex flex-column">
+                  {% for item in o.order_items[:2] %}
+                    <div class="d-flex align-items-center mb-1">
+                      {% if item.product_item and item.product_item.product and item.product_item.product.picture %}
+                        <img src="{{ item.product_item.product.picture }}" alt="{{ item.product_item.product.name }}" style="width: 30px; height: 30px; object-fit: cover; border-radius: 3px;" class="me-2">
+                      {% endif %}
+                      <div>
+                        <div class="small">{{ item.product_item.product.name if item.product_item and item.product_item.product else '商品已刪除' }}</div>
+                        <small class="text-muted">{{ item.product_item.name if item.product_item else '—' }} x{{ item.quantity }}</small>
+                      </div>
+                    </div>
+                  {% endfor %}
+                  {% if o.order_items|length > 2 %}
+                    <small class="text-muted">... 還有 {{ o.order_items|length - 2 }} 項</small>
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div class="fw-bold text-success">NT$ {{ "{:,}".format(o.total) }}</div>
+                {% if o.delivery and o.delivery.freight > 0 %}
+                  <small class="text-muted">含運費 NT$ {{ o.delivery.freight }}</small>
+                {% endif %}
+              </td>
               <td>
                 {% if o.status.value == 1 %}
                   <span class="badge bg-warning">待付款</span>
@@ -36,22 +87,151 @@
               </td>
               <td>{{ o.created_at.strftime('%Y-%m-%d %H:%M') if o.created_at else '—' }}</td>
               <td>
-                <form method="post" action="{{ url_for('admin_order_update_status', order_id=o.id) }}" class="d-flex gap-2 align-items-center">
-                  <select class="form-select form-select-sm" name="status" style="width: 150px;">
-                    <option value="1" {% if o.status.value == 1 %}selected{% endif %}>待付款</option>
-                    <option value="2" {% if o.status.value == 2 %}selected{% endif %}>已付款</option>
-                    <option value="3" {% if o.status.value == 3 %}selected{% endif %}>已發貨</option>
-                    <option value="4" {% if o.status.value == 4 %}selected{% endif %}>退款</option>
-                  </select>
-                  <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-save"></i></button>
-                </form>
+                <div class="btn-group" role="group">
+                  <a href="{{ url_for('admin_order_detail', order_id=o.id) }}" class="btn btn-sm btn-outline-info" title="查看詳情">
+                    <i class="bi bi-eye"></i>
+                  </a>
+                  <button class="btn btn-sm btn-outline-primary" onclick="editOrderStatus({{ o.id }}, {{ o.status.value }})" title="編輯狀態">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                </div>
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+      
+      {% if not orders %}
+      <div class="text-center py-5">
+        <i class="bi bi-cart text-muted" style="font-size: 3rem;"></i>
+        <p class="text-muted mt-3">尚未有任何訂單</p>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
+
+<!-- Filter Orders Modal -->
+<div class="modal fade" id="filterOrdersModal" tabindex="-1" aria-labelledby="filterOrdersModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="filterOrdersModalLabel">
+          <i class="bi bi-funnel"></i> 篩選訂單
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="get" action="{{ url_for('admin_orders') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">訂單狀態</label>
+              <select class="form-select" name="status">
+                <option value="">全部狀態</option>
+                <option value="1">待付款</option>
+                <option value="2">已付款</option>
+                <option value="3">已發貨</option>
+                <option value="4">退款</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">建立日期</label>
+              <input type="date" class="form-control" name="date">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">最低金額</label>
+              <input type="number" class="form-control" name="min_amount" min="0" step="1" placeholder="NT$">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">最高金額</label>
+              <input type="number" class="form-control" name="max_amount" min="0" step="1" placeholder="NT$">
+            </div>
+            <div class="col-12">
+              <label class="form-label">客戶搜尋</label>
+              <input type="text" class="form-control" name="customer" placeholder="姓名、Email 或電話">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">套用篩選</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Order Status Modal -->
+<div class="modal fade" id="editOrderStatusModal" tabindex="-1" aria-labelledby="editOrderStatusModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editOrderStatusModalLabel">
+          <i class="bi bi-pencil"></i> 編輯訂單狀態
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="editOrderStatusForm" method="post">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-bold">訂單編號</label>
+            <div class="form-control-plaintext" id="editOrderId"></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">更新狀態 *</label>
+            <select class="form-select" name="status" id="editOrderStatus" required>
+              <option value="1">待付款</option>
+              <option value="2">已付款</option>
+              <option value="3">已發貨</option>
+              <option value="4">退款</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">備註</label>
+            <textarea class="form-control" name="note" rows="2" placeholder="狀態更新備註（選填）"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">更新狀態</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function editOrderStatus(orderId, currentStatus) {
+  document.getElementById('editOrderId').textContent = `#${orderId}`;
+  document.getElementById('editOrderStatus').value = currentStatus;
+  
+  const form = document.getElementById('editOrderStatusForm');
+  form.action = `/admin/orders/${orderId}/status`;
+  
+  showModal('editOrderStatusModal');
+}
+
+function exportOrders() {
+  // Implement order export functionality
+  showToast('資訊', '匯出功能開發中...', 'info');
+}
+
+// Auto-hide modals after form submission
+document.addEventListener('DOMContentLoaded', function() {
+  const forms = document.querySelectorAll('form');
+  forms.forEach(form => {
+    form.addEventListener('submit', function() {
+      setTimeout(() => {
+        const modal = this.closest('.modal');
+        if (modal) {
+          hideModal(modal.id);
+        }
+      }, 1000);
+    });
+  });
+});
+</script>
 {% endblock %}

@@ -140,6 +140,114 @@ def admin_orders():
     orders = Order.query.order_by(Order.created_at.desc()).all()
     return render_template('admin/orders.html', orders=orders)
 
+@app.route('/admin/orders/<int:order_id>')
+@admin_required(AdminLevel.STAFF)
+def admin_order_detail(order_id):
+    order = Order.query.get(order_id)
+    if not order:
+        flash('訂單不存在', 'danger')
+        return redirect(url_for('admin_orders'))
+    return render_template('admin/order_detail.html', order=order)
+
+@app.route('/admin/orders/<int:order_id>/status', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def admin_order_update_status(order_id):
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            flash('訂單不存在', 'danger')
+            return redirect(url_for('admin_orders'))
+        to_status_val = int(request.form.get('status'))
+        to_status = OrderStatus(to_status_val)
+        from_status = order.status
+        # Validate transitions
+        if from_status == OrderStatus.PENDING and to_status not in [OrderStatus.PAID, OrderStatus.REFUND]:
+            flash('非法狀態轉移：待付款只能改為 已付款 或 退款', 'warning')
+            return redirect(url_for('admin_orders'))
+        if from_status == OrderStatus.PAID and to_status not in [OrderStatus.SHIPPED, OrderStatus.REFUND]:
+            flash('非法狀態轉移：已付款只能改為 已發貨 或 退款', 'warning')
+            return redirect(url_for('admin_orders'))
+        # Sync payment and stock
+        if to_status == OrderStatus.PAID:
+            if order.payment:
+                order.payment.status = PaymentStatus.PAID
+        if to_status == OrderStatus.REFUND:
+            # restock items
+            for oi in order.order_items:
+                if oi.product_item:
+                    oi.product_item.stock += oi.quantity
+            if order.payment:
+                order.payment.status = PaymentStatus.REFUNDED
+        order.status = to_status
+        log = OrderLog(order_id=order.id, action='status_change', from_status=str(from_status.name), to_status=str(to_status.name), note='admin panel update')
+        db.session.add(log)
+        db.session.commit()
+        flash('訂單狀態已更新', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'更新失敗：{e}', 'danger')
+    return redirect(url_for('admin_orders'))
+
+@app.route('/admin/orders/<int:order_id>/delivery', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def admin_order_update_delivery(order_id):
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            flash('訂單不存在', 'danger')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
+        
+        # Create or update delivery info
+        if not order.delivery:
+            order.delivery = Delivery()
+        
+        order.delivery.destination = request.form.get('destination', '')
+        order.delivery.method = DeliveryMethod(request.form.get('method', 'HOME_DELIVERY'))
+        order.delivery.freight = int(request.form.get('freight', 0) or 0)
+        order.delivery.remark = request.form.get('remark', '')
+        
+        # Update delivery status based on order status
+        if order.status == OrderStatus.SHIPPED:
+            order.delivery.status = DeliveryStatus.SHIPPED
+        elif order.status == OrderStatus.REFUND:
+            order.delivery.status = DeliveryStatus.REFUND
+        
+        db.session.commit()
+        flash('物流資訊已更新', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'更新失敗：{e}', 'danger')
+    return redirect(url_for('admin_order_detail', order_id=order_id))
+
+@app.route('/admin/orders/<int:order_id>/payment', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def admin_order_update_payment(order_id):
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            flash('訂單不存在', 'danger')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
+        
+        # Create or update payment info
+        if not order.payment:
+            order.payment = Payment()
+        
+        order.payment.payment_method = request.form.get('payment_method', 'credit_card')
+        order.payment.details = request.form.get('details', '')
+        
+        # Update payment status based on order status
+        if order.status == OrderStatus.PAID:
+            order.payment.status = PaymentStatus.PAID
+        elif order.status == OrderStatus.REFUND:
+            order.payment.status = PaymentStatus.REFUNDED
+        
+        db.session.commit()
+        flash('付款資訊已更新', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'更新失敗：{e}', 'danger')
+    return redirect(url_for('admin_order_detail', order_id=order_id))
+
 # -----------------
 # Admin: Users
 # -----------------
@@ -150,32 +258,136 @@ def admin_users():
     users = User.query.order_by(User.created_at.desc()).all()
     return render_template('admin/users.html', users=users)
 
+@app.route('/admin/users', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_users_add():
+    try:
+        account = request.form.get('account', '').strip()
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        phone = request.form.get('phone', '').strip()
+        level = int(request.form.get('level', 1))
+        wallet = int(request.form.get('wallet', 0) or 0)
+        address = request.form.get('address', '').strip()
+        
+        if not account or not name or not email:
+            flash('帳號、姓名與Email為必填欄位', 'warning')
+            return redirect(url_for('admin_users'))
+        
+        # Check if account or email already exists
+        existing_user = User.query.filter((User.account == account) | (User.email == email)).first()
+        if existing_user:
+            flash('帳號或Email已存在', 'warning')
+            return redirect(url_for('admin_users'))
+        
+        user = User(
+            account=account,
+            password=generate_password_hash('changeme'),  # Default password
+            name=name,
+            email=email,
+            phone=phone,
+            address=address,
+            wallet=wallet,
+            award=0,
+            level=UserLevel(level),
+            register_ip=request.remote_addr
+        )
+        db.session.add(user)
+        db.session.commit()
+        flash('用戶已新增', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'新增失敗：{e}', 'danger')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/edit', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_users_edit(user_id):
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            flash('用戶不存在', 'danger')
+            return redirect(url_for('admin_users'))
+        
+        user.name = request.form.get('name', user.name)
+        user.email = request.form.get('email', user.email)
+        user.phone = request.form.get('phone', user.phone)
+        user.level = UserLevel(int(request.form.get('level', user.level.value)))
+        user.wallet = int(request.form.get('wallet', user.wallet) or 0)
+        user.award = int(request.form.get('award', user.award) or 0)
+        user.address = request.form.get('address', user.address)
+        
+        db.session.commit()
+        flash('用戶已更新', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'更新失敗：{e}', 'danger')
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/<int:user_id>/details')
+@admin_required(AdminLevel.MANAGER)
+def admin_users_details(user_id):
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': '用戶不存在'}), 404
+        
+        return jsonify({
+            'id': user.id,
+            'account': user.account,
+            'name': user.name,
+            'email': user.email,
+            'phone': user.phone,
+            'level': user.level.value,
+            'level_name': user.level.name,
+            'wallet': user.wallet,
+            'award': user.award,
+            'address': user.address,
+            'created_at': user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '—'
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # -----------------
-# Admin: Product CRUD
+# Admin: Product CRUD with store_id support
 # -----------------
 
 @app.route('/admin/products')
 @admin_required(AdminLevel.STAFF)
 def admin_products():
     q = request.args.get('q', '').strip()
-    query = Product.query
+    store_id = int(request.args.get('store_id', 1))  # Default to store 1
+    status_filter = request.args.get('status', '')
+    
+    query = Product.query.filter_by(store_id=store_id)
+    
     if q:
         like = f"%{q}%"
         query = query.filter((Product.name.like(like)) | (Product.catalog.like(like)))
+    
+    if status_filter:
+        status_enum = ProductStatus(int(status_filter))
+        query = query.filter_by(status=status_enum)
+    
     products = query.order_by(Product.id.desc()).all()
-    return render_template('admin/products.html', products=products, q=q)
+    
+    # Get available stores for filter
+    stores = Store.query.all()
+    
+    return render_template('admin/products.html', products=products, q=q, stores=stores, current_store_id=store_id)
 
 @app.route('/admin/products/new', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_product_new():
     if request.method == 'POST':
+        store_id = int(request.form.get('store_id', 1))
         name = request.form.get('name', '').strip()
         catalog = request.form.get('catalog', '').strip()
         if not name or not catalog:
             flash('名稱與分類不可空白', 'warning')
             return redirect(url_for('admin_product_new'))
         p = Product(
-            store_id=1,
+            store_id=store_id,
             name=name,
             catalog=catalog,
             descriptions=request.form.get('descriptions',''),
@@ -187,7 +399,9 @@ def admin_product_new():
         db.session.commit()
         flash('商品已新增', 'success')
         return redirect(url_for('admin_products'))
-    return render_template('admin/product_form.html', product=None)
+    
+    stores = Store.query.all()
+    return render_template('admin/product_form.html', product=None, stores=stores)
 
 @app.route('/admin/products/<int:pid>/edit', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
@@ -205,7 +419,9 @@ def admin_product_edit(pid):
         db.session.commit()
         flash('商品已更新', 'success')
         return redirect(url_for('admin_products'))
-    return render_template('admin/product_form.html', product=p)
+    
+    stores = Store.query.all()
+    return render_template('admin/product_form.html', product=p, stores=stores)
 
 @app.route('/admin/products/<int:pid>/delete', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
@@ -367,49 +583,6 @@ def admin_raw_page_edit(rid):
         flash('頁面已更新', 'success')
         return redirect(url_for('admin_raw_pages'))
     return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
-
-# -----------------
-# Admin: Orders status update (edit)
-# -----------------
-
-@app.route('/admin/orders/<int:order_id>/status', methods=['POST'])
-@admin_required(AdminLevel.STAFF)
-def admin_order_update_status(order_id):
-    try:
-        order = Order.query.get(order_id)
-        if not order:
-            flash('訂單不存在', 'danger')
-            return redirect(url_for('admin_orders'))
-        to_status_val = int(request.form.get('status'))
-        to_status = OrderStatus(to_status_val)
-        from_status = order.status
-        # Validate transitions
-        if from_status == OrderStatus.PENDING and to_status not in [OrderStatus.PAID, OrderStatus.REFUND]:
-            flash('非法狀態轉移：待付款只能改為 已付款 或 退款', 'warning')
-            return redirect(url_for('admin_orders'))
-        if from_status == OrderStatus.PAID and to_status not in [OrderStatus.SHIPPED, OrderStatus.REFUND]:
-            flash('非法狀態轉移：已付款只能改為 已發貨 或 退款', 'warning')
-            return redirect(url_for('admin_orders'))
-        # Sync payment and stock
-        if to_status == OrderStatus.PAID:
-            if order.payment:
-                order.payment.status = PaymentStatus.PAID
-        if to_status == OrderStatus.REFUND:
-            # restock items
-            for oi in order.order_items:
-                if oi.product_item:
-                    oi.product_item.stock += oi.quantity
-            if order.payment:
-                order.payment.status = PaymentStatus.REFUNDED
-        order.status = to_status
-        log = OrderLog(order_id=order.id, action='status_change', from_status=str(from_status.name), to_status=str(to_status.name), note='admin panel update')
-        db.session.add(log)
-        db.session.commit()
-        flash('訂單狀態已更新', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'更新失敗：{e}', 'danger')
-    return redirect(url_for('admin_orders'))
 
 # -----------------
 # APIs with workflow logging and creation

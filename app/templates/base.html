@@ -16,6 +16,7 @@
     
     <style>
         :root {
+            /* Default Theme (Modern Bootstrap) */
             --primary-color: #0d6efd;
             --secondary-color: #6c757d;
             --success-color: #198754;
@@ -24,11 +25,46 @@
             --danger-color: #dc3545;
             --light-color: #f8f9fa;
             --dark-color: #212529;
+            --sidebar-bg: linear-gradient(200deg, #6a7bd1 0%, #7b55c7 100%);
+            --card-shadow: 0 10px 24px rgba(15, 30, 67, 0.08);
+            --border-radius: 16px;
+        }
+
+        /* Glassmorphism Theme */
+        [data-theme="glassmorphism"] {
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --sidebar-bg: linear-gradient(135deg, rgba(102, 126, 234, 0.8) 0%, rgba(118, 75, 162, 0.8) 100%);
+            --card-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            --border-radius: 20px;
+        }
+
+        /* Pro Dark Theme */
+        [data-theme="pro-dark"] {
+            --primary-color: #00d4ff;
+            --secondary-color: #0099cc;
+            --success-color: #00ff88;
+            --info-color: #00d4ff;
+            --warning-color: #ffaa00;
+            --danger-color: #ff4757;
+            --light-color: #2d3436;
+            --dark-color: #1e2729;
+            --sidebar-bg: linear-gradient(180deg, #2d3436 0%, #1e2729 100%);
+            --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            --border-radius: 12px;
         }
         
         body {
             font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-            background-color: #f8f9fa;
+            background-color: var(--light-color);
+            margin: 0;
+            padding: 0;
+        }
+        
+        .navbar {
+            height: 60px !important;
+            min-height: 60px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
         .navbar-brand {
@@ -38,8 +74,8 @@
         
         .card {
             border: none;
-            border-radius: 16px;
-            box-shadow: 0 10px 24px rgba(15, 30, 67, 0.08);
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
             transition: all 0.3s ease;
         }
         
@@ -80,17 +116,25 @@
         }
         
         .sidebar {
-            min-height: 100vh;
-            background: linear-gradient(200deg, #6a7bd1 0%, #7b55c7 100%);
+            min-height: calc(100vh - 60px);
+            background: var(--sidebar-bg);
             color: white;
             box-shadow: inset 0 0 1px rgba(255,255,255,0.2);
+            margin-top: 60px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            width: 250px;
+            transition: transform 0.3s ease;
         }
         
         .sidebar .nav-link {
             color: rgba(255, 255, 255, 0.8);
             border-radius: 10px;
-            margin: 2px 0;
+            margin: 2px 8px;
             transition: all 0.3s ease;
+            padding: 12px 16px;
         }
         
         .sidebar .nav-link:hover,
@@ -101,13 +145,17 @@
         }
         
         .sidebar .nav-link i {
-            margin-right: 10px;
+            margin-right: 12px;
             width: 20px;
         }
         
         .main-content {
-            background-color: #f8f9fa;
-            min-height: 100vh;
+            background-color: var(--light-color);
+            min-height: calc(100vh - 60px);
+            margin-left: 250px;
+            margin-top: 60px;
+            padding: 20px;
+            transition: margin-left 0.3s ease;
         }
         
         .stats-card {
@@ -204,7 +252,7 @@
             to { transform: rotate(360deg); }
         }
         
-        .fade-enter-active, .fade-leave-active {
+ .fade-enter-active, .fade-leave-active {
             transition: opacity 0.3s ease;
         }
         
@@ -216,20 +264,92 @@
             transition: all 0.3s ease;
         }
         
-        .slide-enter-from {
-            transform: translateX(-20px);
-            opacity: 0;
-        }
-        
+LOBODY>
+        .slideansa
         .slide-leave-to {
             transform: translateX(20px);
             opacity: 0;
+        }
+
+        /* RWD Support */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 100%;
+            }
+            
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+                padding: 15px;
+            }
+            
+            .navbar-brand {
+                font-size: 1.2rem;
+            }
+            
+            .card {
+                margin-bottom: 15px;
+            }
+            
+            .stats-card .stats-number {
+                font-size: 2rem;
+            }
+        }
+
+        /* Theme Switcher */
+        .theme-switcher {
+            position: fixed;
+            top: 70px;
+            right: 20px;
+            z-index: 1001;
+            background: white;
+            border-radius: 25px;
+            padding: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .theme-switcher .btn {
+            border-radius: 20px;
+            margin: 0 2px;
+            padding: 6px 12px;
+            font-size: 0.8rem;
+        }
+
+        /* Modal Enhancements */
+        .modal-dialog {
+            max-width: 90%;
+        }
+
+        @media (min-width: 768px) {
+            .modal-dialog {
+                max-width: 600px;
+            }
+        }
+
+        /* Table Responsiveness */
+        .table-responsive {
+            border-radius: 10px;
+        }
+
+        /* Form Improvements */
+        .form-label {
+            font-weight: 600;
+            color: var(--dark-color);
+        }
+
+        .form-text {
+            color: var(--secondary-color);
+            font-size: 0.875rem;
         }
     </style>
     
     {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body data-theme="modern">
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
         <div class="container-fluid">
@@ -263,14 +383,21 @@
         </div>
     </nav>
 
+    <!-- Theme Switcher -->
+    <div class="theme-switcher">
+        <button class="btn btn-outline-primary btn-sm" onclick="setTheme('modern')" data-theme="modern">現代</button>
+        <button class="btn btn-outline-primary btn-sm" onclick="setTheme('glassmorphism')" data-theme="glassmorphism">玻璃</button>
+        <button class="btn btn-outline-primary btn-sm" onclick="setTheme('pro-dark')" data-theme="pro-dark">深色</button>
+    </div>
+
     <!-- Main Content -->
-    <div class="container-fluid" style="padding-top: 72px;">
-        <div class="row">
+    <div class="container-fluid p-0">
+        <div class="row g-0">
             {% set is_admin = (request.endpoint and 'admin' in request.endpoint) %}
             {% if is_admin %}
             <!-- Sidebar for Admin Pages -->
-            <nav class="col-12 col-md-3 col-lg-2 sidebar collapse d-md-block">
-                <div class="pt-3 position-sticky" style="top: 72px;">
+            <nav class="col-12 sidebar" id="sidebar">
+                <div class="pt-3">
                     <ul class="nav flex-column">
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}" href="/admin">
@@ -319,8 +446,8 @@
             </nav>
             {% endif %}
             
-            <!-- Main Content Area (single block to avoid duplicate block definitions) -->
-            <main class="{% if is_admin %}col-12 col-md-9 col-lg-10 ms-auto px-md-4 main-content{% else %}col-12{% endif %}">
+            <!-- Main Content Area -->
+            <main class="{% if is_admin %}main-content{% else %}col-12{% endif %}">
                 {% block content %}{% endblock %}
             </main>
         </div>
@@ -344,6 +471,36 @@
 
     <!-- Global JavaScript Functions -->
     <script>
+        // Theme switching functionality
+        function setTheme(theme) {
+            document.body.setAttribute('data-theme', theme);
+            localStorage.setItem('selected-theme', theme);
+            
+            // Update active button
+            document.querySelectorAll('.theme-switcher .btn').forEach(btn => {
+                btn.classList.remove('btn-primary');
+                btn.classList.add('btn-outline-primary');
+            });
+            event.target.classList.remove('btn-outline-primary');
+            event.target.classList.add('btn-primary');
+        }
+
+        // Load saved theme
+        document.addEventListener('DOMContentLoaded', function() {
+            const savedTheme = localStorage.getItem('selected-theme') || 'modern';
+            setTheme(savedTheme);
+            
+            // Mobile sidebar toggle
+            const navbarToggler = document.querySelector('.navbar-toggler');
+            const sidebar = document.getElementById('sidebar');
+            
+            if (navbarToggler && sidebar) {
+                navbarToggler.addEventListener('click', function() {
+                    sidebar.classList.toggle('show');
+                });
+            }
+        });
+
         // Toast notification function
         function showToast(title, message, type = 'info') {
             const toast = document.getElementById('liveToast');
@@ -414,6 +571,17 @@
                 hour: '2-digit',
                 minute: '2-digit'
             });
+        }
+
+        // Modal helper functions
+        function showModal(modalId) {
+            const modal = new bootstrap.Modal(document.getElementById(modalId));
+            modal.show();
+        }
+
+        function hideModal(modalId) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById(modalId));
+            if (modal) modal.hide();
         }
     </script>
     
