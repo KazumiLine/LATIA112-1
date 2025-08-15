@@ -156,6 +156,8 @@
             margin-top: 60px;
             padding: 20px;
             transition: margin-left 0.3s ease;
+            max-width: calc(100vw - 250px);
+            overflow-x: hidden;
         }
         
         .stats-card {
@@ -275,7 +277,8 @@ LOBODY>
         @media (max-width: 768px) {
             .sidebar {
                 transform: translateX(-100%);
-                width: 100%;
+                width: 280px;
+                max-width: 85vw;
             }
             
             .sidebar.show {
@@ -298,18 +301,39 @@ LOBODY>
             .stats-card .stats-number {
                 font-size: 2rem;
             }
+
+            /* Mobile navbar adjustments */
+            .navbar-toggler {
+                order: -1;
+                margin-right: 0;
+            }
+
+            .navbar-nav {
+                flex-direction: row;
+                align-items: center;
+            }
+
+            .navbar-nav .nav-link {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.9rem;
+            }
         }
 
         /* Theme Switcher */
         .theme-switcher {
             position: fixed;
-            top: 70px;
+            bottom: 20px;
             right: 20px;
             z-index: 1001;
             background: white;
             border-radius: 25px;
             padding: 8px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .theme-switcher.collapsed {
+            transform: translateX(calc(100% - 40px));
         }
 
         .theme-switcher .btn {
@@ -317,6 +341,38 @@ LOBODY>
             margin: 0 2px;
             padding: 6px 12px;
             font-size: 0.8rem;
+        }
+
+        .theme-switcher .toggle-btn {
+            position: absolute;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .theme-switcher .toggle-btn:hover {
+            background: var(--secondary-color);
+        }
+
+        .theme-switcher .theme-buttons {
+            display: flex;
+            transition: opacity 0.3s ease;
+        }
+
+        .theme-switcher.collapsed .theme-buttons {
+            opacity: 0;
+            pointer-events: none;
         }
 
         /* Modal Enhancements */
@@ -384,10 +440,15 @@ LOBODY>
     </nav>
 
     <!-- Theme Switcher -->
-    <div class="theme-switcher">
-        <button class="btn btn-outline-primary btn-sm" onclick="setTheme('modern')" data-theme="modern">現代</button>
-        <button class="btn btn-outline-primary btn-sm" onclick="setTheme('glassmorphism')" data-theme="glassmorphism">玻璃</button>
-        <button class="btn btn-outline-primary btn-sm" onclick="setTheme('pro-dark')" data-theme="pro-dark">深色</button>
+    <div class="theme-switcher" id="themeSwitcher">
+        <button class="toggle-btn" onclick="toggleThemeSwitcher()" title="切換主題選擇器">
+            <i class="bi bi-palette"></i>
+        </button>
+        <div class="theme-buttons">
+            <button class="btn btn-outline-primary btn-sm" onclick="setTheme('modern')" data-theme="modern">現代</button>
+            <button class="btn btn-outline-primary btn-sm" onclick="setTheme('glassmorphism')" data-theme="glassmorphism">玻璃</button>
+            <button class="btn btn-outline-primary btn-sm" onclick="setTheme('pro-dark')" data-theme="pro-dark">深色</button>
+        </div>
     </div>
 
     <!-- Main Content -->
@@ -433,6 +494,12 @@ LOBODY>
                             <a class="nav-link {% if request.endpoint in ['admin_raw_pages','admin_raw_page_new','admin_raw_page_edit'] %}active{% endif %}" href="/admin/raw-pages">
                                 <i class="bi bi-file-earmark-text"></i>
                                 頁面管理
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint in ['admin_customer_service', 'admin_customer_service_chat'] %}active{% endif %}" href="/admin/customer-service">
+                                <i class="bi bi-chat-dots"></i>
+                                客服管理
                             </a>
                         </li>
                         <li class="nav-item">
@@ -485,10 +552,22 @@ LOBODY>
             event.target.classList.add('btn-primary');
         }
 
+        function toggleThemeSwitcher() {
+            const switcher = document.getElementById('themeSwitcher');
+            switcher.classList.toggle('collapsed');
+            localStorage.setItem('theme-switcher-collapsed', switcher.classList.contains('collapsed'));
+        }
+
         // Load saved theme
         document.addEventListener('DOMContentLoaded', function() {
             const savedTheme = localStorage.getItem('selected-theme') || 'modern';
             setTheme(savedTheme);
+            
+            // Load theme switcher collapsed state
+            const isCollapsed = localStorage.getItem('theme-switcher-collapsed') === 'true';
+            if (isCollapsed) {
+                document.getElementById('themeSwitcher').classList.add('collapsed');
+            }
             
             // Mobile sidebar toggle
             const navbarToggler = document.querySelector('.navbar-toggler');

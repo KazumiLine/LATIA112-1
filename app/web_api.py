@@ -108,13 +108,128 @@ def metrics():
     })
 
 # -----------------
-# Pages
+# Frontend Routes
 # -----------------
 
 @app.route('/')
 def index():
-    products = Product.query.filter_by(status=ProductStatus.NORMAL).all()
+    """Frontend homepage - separate from admin backend"""
+    products = Product.query.filter_by(status=ProductStatus.NORMAL).limit(8).all()
     return render_template('index.html', products=products)
+
+@app.route('/login')
+def login():
+    """User login page"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        
+        if username == 'admin' and password == 'admin1234':
+            session['user_id'] = 'admin'
+            session['user_type'] = 'admin'
+            session['username'] = 'admin'
+            flash('管理員登入成功', 'success')
+            return redirect(url_for('admin_dashboard'))
+        elif username == 'user' and password == 'user1234':
+            session['user_id'] = 'user'
+            session['user_type'] = 'user'
+            session['username'] = 'user'
+            flash('用戶登入成功', 'success')
+            return redirect(url_for('user_dashboard'))
+        else:
+            flash('帳號或密碼錯誤', 'danger')
+    
+    return render_template('login.html')
+
+@app.route('/user/login')
+def user_login():
+    """Frontend user login page"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '').strip()
+        
+        if username == 'user' and password == 'user1234':
+            session['user_id'] = 'user'
+            session['user_type'] = 'user'
+            session['username'] = 'user'
+            flash('登入成功', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('帳號或密碼錯誤', 'danger')
+    
+    return render_template('user_login.html')
+
+@app.route('/user/dashboard')
+@login_required
+def user_dashboard():
+    """User dashboard - separate from admin"""
+    if session.get('user_type') != 'user':
+        flash('權限不足', 'danger')
+        return redirect(url_for('index'))
+    
+    # Get user's orders
+    user_orders = Order.query.filter_by(user_id=session['user_id']).order_by(Order.created_at.desc()).limit(5).all()
+    return render_template('user/dashboard.html', orders=user_orders)
+
+@app.route('/chat')
+@login_required
+def chat_page():
+    """AI Chat page for users"""
+    if session.get('user_type') != 'user':
+        flash('權限不足', 'danger')
+        return redirect(url_for('index'))
+    
+    return render_template('chat.html')
+
+@app.route('/api/chat', methods=['POST'])
+@login_required
+def api_chat():
+    """AI Chat API endpoint"""
+    if session.get('user_type') != 'user':
+        return jsonify({'error': '權限不足'}), 403
+    
+    try:
+        data = request.get_json()
+        message = data.get('message', '').strip()
+        
+        if not message:
+            return jsonify({'error': '訊息不能為空'}), 400
+        
+        # Simple AI response simulation
+        # In real implementation, this would call the AI service from main.py
+        ai_response = generate_ai_response(message)
+        
+        return jsonify({
+            'success': True,
+            'response': ai_response,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def generate_ai_response(message):
+    """Generate AI response based on user message"""
+    message_lower = message.lower()
+    
+    if '你好' in message or 'hello' in message_lower:
+        return '您好！我是智能客服助手，很高興為您服務。請問有什麼可以幫助您的嗎？'
+    elif '商品' in message or '產品' in message:
+        return '我們有各種優質商品，包括電子產品、居家用品、戶外裝備等。您可以在首頁瀏覽所有商品，或告訴我您感興趣的類別。'
+    elif '訂單' in message or '購買' in message:
+        return '您可以在用戶儀表板查看您的訂單狀態。如需協助，請提供訂單編號，我會為您查詢。'
+    elif '退貨' in message or '退款' in message:
+        return '退貨政策：商品收到後7天內，如發現商品有瑕疵或不符合描述，可申請退貨。請聯繫客服處理。'
+    elif '運費' in message or '配送' in message:
+        return '我們提供多種配送方式：宅配、自取、快遞、郵寄。運費根據配送方式和地區計算，通常在結帳時會顯示。'
+    elif '無法解決' in message or '真人' in message:
+        return '如果無法解決您的問題，請等待真人客服回覆。我們會盡快為您處理。'
+    else:
+        return '感謝您的詢問。如果我的回答無法解決您的問題，請等待真人客服回覆，或嘗試重新描述您的問題。'
+
+# -----------------
+# Admin Routes (Protected)
+# -----------------
 
 @app.route('/admin')
 @login_required
@@ -583,6 +698,96 @@ def admin_raw_page_edit(rid):
         flash('頁面已更新', 'success')
         return redirect(url_for('admin_raw_pages'))
     return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
+
+# -----------------
+# Admin: Customer Service
+# -----------------
+
+@app.route('/admin/customer-service')
+@admin_required(AdminLevel.STAFF)
+def admin_customer_service():
+    # Get chat history from chat_store (simulated for now)
+    # In real implementation, this would connect to AgentBuilder's chat_store
+    chats = [
+        {
+            'id': 1,
+            'user_id': 'user123',
+            'user_name': '張小明',
+            'last_message': '請問商品什麼時候會到貨？',
+            'status': 'unresolved',
+            'created_at': '2025-08-15 10:30:00',
+            'last_activity': '2025-08-15 14:20:00'
+        },
+        {
+            'id': 2,
+            'user_id': 'user456',
+            'user_name': '李小華',
+            'last_message': '我想退貨，該怎麼處理？',
+            'status': 'resolved',
+            'created_at': '2025-08-15 09:15:00',
+            'last_activity': '2025-08-15 11:45:00'
+        }
+    ]
+    return render_template('admin/customer_service.html', chats=chats)
+
+@app.route('/admin/customer-service/<int:chat_id>')
+@admin_required(AdminLevel.STAFF)
+def admin_customer_service_chat(chat_id):
+    # Get specific chat details
+    chat = {
+        'id': chat_id,
+        'user_id': 'user123',
+        'user_name': '張小明',
+        'messages': [
+            {
+                'id': 1,
+                'sender': 'user',
+                'content': '請問商品什麼時候會到貨？',
+                'timestamp': '2025-08-15 10:30:00'
+            },
+            {
+                'id': 2,
+                'sender': 'ai',
+                'content': '根據您的訂單狀態，商品預計明天會到貨。',
+                'timestamp': '2025-08-15 10:31:00'
+            },
+            {
+                'id': 3,
+                'sender': 'user',
+                'content': '可以幫我追蹤物流嗎？',
+                'timestamp': '2025-08-15 14:20:00'
+            }
+        ],
+        'status': 'unresolved'
+    }
+    return render_template('admin/customer_service_chat.html', chat=chat)
+
+@app.route('/admin/customer-service/<int:chat_id>/resolve', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def admin_customer_service_resolve(chat_id):
+    try:
+        # Mark chat as resolved
+        # In real implementation, this would update the chat_store
+        flash('聊天已標記為已解決', 'success')
+    except Exception as e:
+        flash(f'操作失敗：{e}', 'danger')
+    return redirect(url_for('admin_customer_service_chat', chat_id=chat_id))
+
+@app.route('/admin/customer-service/<int:chat_id>/reply', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def admin_customer_service_reply(chat_id):
+    try:
+        message = request.form.get('message', '').strip()
+        if not message:
+            flash('回覆內容不能為空', 'warning')
+            return redirect(url_for('admin_customer_service_chat', chat_id=chat_id))
+        
+        # Add admin reply to chat
+        # In real implementation, this would update the chat_store
+        flash('回覆已發送', 'success')
+    except Exception as e:
+        flash(f'發送失敗：{e}', 'danger')
+    return redirect(url_for('admin_customer_service_chat', chat_id=chat_id))
 
 # -----------------
 # APIs with workflow logging and creation

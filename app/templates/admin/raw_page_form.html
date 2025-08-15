@@ -5,10 +5,23 @@
 <style>
   .ql-editor {
     min-height: 300px;
+    max-height: 400px;
+    overflow-y: auto;
   }
   .form-container {
-    max-width: 800px;
+    max-width: 900px;
     margin: 0 auto;
+  }
+  .editor-container {
+    margin-bottom: 20px;
+  }
+  .form-actions {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    padding: 15px 0;
+    border-top: 1px solid #dee2e6;
+    margin-top: 20px;
   }
 </style>
 {% endblock %}
@@ -67,7 +80,15 @@
             <select name="type" class="form-select" required>
               <option value="">請選擇類型</option>
               {% for t in page_types %}
-                <option value="{{ t.name }}" {% if page and page.type == t %}selected{% endif %}>{{ t.value }}</option>
+                <option value="{{ t.name }}" {% if page and page.type == t %}selected{% endif %}>
+                  {% if t.name == 'ABOUT' %}關於我們
+                  {% elif t.name == 'TERMS' %}服務條款
+                  {% elif t.name == 'PRIVACY' %}隱私政策
+                  {% elif t.name == 'FAQ' %}常見問題
+                  {% elif t.name == 'CONTACT' %}聯絡我們
+                  {% elif t.name == 'CUSTOM' %}自訂頁面
+                  {% else %}{{ t.value }}{% endif %}
+                </option>
               {% endfor %}
             </select>
           </div>
@@ -81,18 +102,22 @@
           </div>
           <div class="col-12">
             <label class="form-label">內容</label>
-            <div id="editor"></div>
+            <div class="editor-container">
+              <div id="editor"></div>
+            </div>
             <input type="hidden" name="content" value="{{ page.content if page }}" />
             <div class="form-text">支援富文本編輯，可插入圖片、連結、表格等</div>
           </div>
         </div>
-        <div class="mt-4 d-flex gap-2">
-          <button class="btn btn-primary" type="submit">
-            <i class="bi bi-save"></i> 儲存
-          </button>
-          <a href="{{ url_for('admin_raw_pages') }}" class="btn btn-secondary">
-            <i class="bi bi-arrow-left"></i> 返回
-          </a>
+        <div class="form-actions">
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">
+              <i class="bi bi-save"></i> 儲存
+            </button>
+            <a href="{{ url_for('admin_raw_pages') }}" class="btn btn-secondary">
+              <i class="bi bi-arrow-left"></i> 返回
+            </a>
+          </div>
         </div>
       </form>
     </div>

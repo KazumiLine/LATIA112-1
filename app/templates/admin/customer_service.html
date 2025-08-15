@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}管理後台 - 客服管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-chat-dots"></i> 客服管理</h3>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-primary" onclick="refreshChats()">
+        <i class="bi bi-arrow-clockwise"></i> 重新整理
+      </button>
+      <button class="btn btn-primary" onclick="showModal('filterChatsModal')">
+        <i class="bi bi-funnel"></i> 篩選聊天
+      </button>
+    </div>
+  </div>
+
+  <!-- Chat List -->
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>聊天ID</th>
+              <th>用戶</th>
+              <th>最後訊息</th>
+              <th>狀態</th>
+              <th>建立時間</th>
+              <th>最後活動</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for chat in chats %}
+            <tr class="{% if chat.status == 'unresolved' %}table-warning{% endif %}">
+              <td>#{{ chat.id }}</td>
+              <td>
+                <div class="d-flex align-items-center">
+                  <div class="avatar me-2">
+                    <i class="bi bi-person-circle text-primary" style="font-size: 1.5rem;"></i>
+                  </div>
+                  <div>
+                    <div class="fw-bold">{{ chat.user_name }}</div>
+                    <small class="text-muted">{{ chat.user_id }}</small>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="text-truncate" style="max-width: 200px;" title="{{ chat.last_message }}">
+                  {{ chat.last_message }}
+                </div>
+              </td>
+              <td>
+                {% if chat.status == 'unresolved' %}
+                  <span class="badge bg-warning">待處理</span>
+                {% else %}
+                  <span class="badge bg-success">已解決</span>
+                {% endif %}
+              </td>
+              <td>{{ chat.created_at }}</td>
+              <td>{{ chat.last_activity }}</td>
+              <td>
+                <div class="btn-group" role="group">
+                  <a href="{{ url_for('admin_customer_service_chat', chat_id=chat.id) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-chat"></i> 查看
+                  </a>
+                  {% if chat.status == 'unresolved' %}
+                    <button class="btn btn-sm btn-outline-success" onclick="markAsResolved({{ chat.id }})">
+                      <i class="bi bi-check-circle"></i> 解決
+                    </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      
+      {% if not chats %}
+      <div class="text-center py-5">
+        <i class="bi bi-chat-dots text-muted" style="font-size: 3rem;"></i>
+        <p class="text-muted mt-3">目前沒有客服聊天記錄</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Filter Chats Modal -->
+<div class="modal fade" id="filterChatsModal" tabindex="-1" aria-labelledby="filterChatsModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="filterChatsModalLabel">
+          <i class="bi bi-funnel"></i> 篩選聊天
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="get" action="{{ url_for('admin_customer_service') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">聊天狀態</label>
+              <select class="form-select" name="status">
+                <option value="">全部狀態</option>
+                <option value="unresolved">待處理</option>
+                <option value="resolved">已解決</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">建立日期</label>
+              <input type="date" class="form-control" name="date">
+            </div>
+            <div class="col-12">
+              <label class="form-label">用戶搜尋</label>
+              <input type="text" class="form-control" name="user" placeholder="用戶姓名或ID">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">套用篩選</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function refreshChats() {
+  location.reload();
+}
+
+function markAsResolved(chatId) {
+  if (confirm('確定要將此聊天標記為已解決嗎？')) {
+    fetch(`/admin/customer-service/${chatId}/resolve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      }
+    }).then(response => {
+      if (response.ok) {
+        location.reload();
+      }
+    });
+  }
+}
+
+// Auto-hide modals after form submission
+document.addEventListener('DOMContentLoaded', function() {
+  const forms = document.querySelectorAll('form');
+  forms.forEach(form => {
+    form.addEventListener('submit', function() {
+      setTimeout(() => {
+        const modal = this.closest('.modal');
+        if (modal) {
+          hideModal(modal.id);
+        }
+      }, 1000);
+    });
+  });
+});
+</script>
+{% endblock %}

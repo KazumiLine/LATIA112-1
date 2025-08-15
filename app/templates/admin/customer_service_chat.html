@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}管理後台 - 客服聊天 #{{ chat.id }}{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-chat-dots"></i> 客服聊天 #{{ chat.id }}</h3>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin_customer_service') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回列表
+      </a>
+      {% if chat.status == 'unresolved' %}
+        <form method="post" action="{{ url_for('admin_customer_service_resolve', chat_id=chat.id) }}" style="display: inline;">
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-check-circle"></i> 標記為已解決
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Chat Header -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="row align-items-center">
+        <div class="col-md-6">
+          <h5 class="mb-1">用戶資訊</h5>
+          <div class="d-flex align-items-center">
+            <i class="bi bi-person-circle text-primary me-2" style="font-size: 2rem;"></i>
+            <div>
+              <div class="fw-bold">{{ chat.user_name }}</div>
+              <small class="text-muted">ID: {{ chat.user_id }}</small>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 text-md-end">
+          <h5 class="mb-1">聊天狀態</h5>
+          {% if chat.status == 'unresolved' %}
+            <span class="badge bg-warning fs-6">待處理</span>
+          {% else %}
+            <span class="badge bg-success fs-6">已解決</span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <!-- Chat Messages -->
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-chat"></i> 聊天記錄</h5>
+        </div>
+        <div class="card-body" style="height: 500px; overflow-y: auto;">
+          <div class="chat-messages">
+            {% for message in chat.messages %}
+            <div class="message mb-3 {% if message.sender == 'user' %}text-start{% else %}text-end{% endif %}">
+              <div class="d-inline-block p-3 rounded {% if message.sender == 'user' %}bg-light{% else %}bg-primary text-white{% endif %}" style="max-width: 70%;">
+                <div class="message-content">{{ message.content }}</div>
+                <small class="text-muted d-block mt-1">{{ message.timestamp }}</small>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reply Panel -->
+    <div class="col-lg-4">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-reply"></i> 回覆用戶</h5>
+        </div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('admin_customer_service_reply', chat_id=chat.id) }}">
+            <div class="mb-3">
+              <label class="form-label fw-bold">回覆內容</label>
+              <textarea class="form-control" name="message" rows="4" placeholder="請輸入回覆內容..." required></textarea>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-bold">快速回覆</label>
+              <div class="d-grid gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('感謝您的詢問，我們會盡快處理。')">
+                  感謝詢問
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('抱歉造成不便，我們會立即改善。')">
+                  道歉回覆
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('請稍等，我為您查詢相關資訊。')">
+                  請稍等
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('如果無法解決您的問題，請等待真人客服回覆。')">
+                  無法解決
+                </button>
+              </div>
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-send"></i> 發送回覆
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Chat Tools -->
+      <div class="card mt-3">
+        <div class="card-header">
+          <h5 class="mb-0"><i class="bi bi-tools"></i> 聊天工具</h5>
+        </div>
+        <div class="card-body">
+          <div class="d-grid gap-2">
+            <button class="btn btn-outline-info btn-sm" onclick="showUserInfo()">
+              <i class="bi bi-person"></i> 查看用戶資料
+            </button>
+            <button class="btn btn-outline-warning btn-sm" onclick="escalateToHuman()">
+              <i class="bi bi-person-badge"></i> 轉接真人客服
+            </button>
+            <button class="btn btn-outline-danger btn-sm" onclick="closeChat()">
+              <i class="bi bi-x-circle"></i> 關閉聊天
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.chat-messages {
+  padding: 10px;
+}
+
+.message .bg-light {
+  background-color: #f8f9fa !important;
+}
+
+.message .bg-primary {
+  background-color: var(--primary-color) !important;
+}
+
+.quick-reply-btn {
+  font-size: 0.8rem;
+  padding: 0.25rem 0.5rem;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function insertQuickReply(text) {
+  const textarea = document.querySelector('textarea[name="message"]');
+  textarea.value = text;
+  textarea.focus();
+}
+
+function showUserInfo() {
+  showToast('資訊', '用戶資料功能開發中...', 'info');
+}
+
+function escalateToHuman() {
+  if (confirm('確定要將此聊天轉接給真人客服嗎？')) {
+    showToast('成功', '聊天已轉接給真人客服', 'success');
+  }
+}
+
+function closeChat() {
+  if (confirm('確定要關閉此聊天嗎？')) {
+    showToast('成功', '聊天已關閉', 'success');
+  }
+}
+
+// Auto-scroll to bottom of chat
+document.addEventListener('DOMContentLoaded', function() {
+  const chatContainer = document.querySelector('.chat-messages');
+  if (chatContainer) {
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+});
+</script>
+{% endblock %}
