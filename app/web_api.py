@@ -17,51 +17,52 @@ from .models import (
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///storage/app.db')
+DB_PATH = os.environ.get("APP_DB_PATH", os.path.join(os.getcwd(), "storage", "app.db"))
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{DB_PATH}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 CORS(app)
 
 # Initialize database
-def init_db():
-    with app.app_context():
-        db.create_all()
+# def init_db():
+#     with app.app_context():
+#         db.create_all()
         
-        # Create default store if not exists
-        if not Store.query.first():
-            default_store = Store(
-                prefix="DEFAULT",
-                store_name="Default Store",
-                store_info="Welcome to our store!",
-                email="admin@example.com",
-                address="123 Main St, City",
-                phone="+886-2-1234-5678",
-                business_hours="9:00-18:00",
-                marquee=["Welcome!", "New products available!"]
-            )
-            db.session.add(default_store)
-            db.session.commit()
+#         # Create default store if not exists
+#         if not Store.query.first():
+#             default_store = Store(
+#                 prefix="DEFAULT",
+#                 store_name="Default Store",
+#                 store_info="Welcome to our store!",
+#                 email="admin@example.com",
+#                 address="123 Main St, City",
+#                 phone="+886-2-1234-5678",
+#                 business_hours="9:00-18:00",
+#                 marquee=["Welcome!", "New products available!"]
+#             )
+#             db.session.add(default_store)
+#             db.session.commit()
             
-            # Create default admin user
-            admin_user = User(
-                account="admin",
-                password=generate_password_hash("admin123"),
-                name="Administrator",
-                email="admin@example.com",
-                level=UserLevel.THIRD
-            )
-            db.session.add(admin_user)
-            db.session.commit()
+#             # Create default admin user
+#             admin_user = User(
+#                 account="admin",
+#                 password=generate_password_hash("admin123"),
+#                 name="Administrator",
+#                 email="admin@example.com",
+#                 level=UserLevel.THIRD
+#             )
+#             db.session.add(admin_user)
+#             db.session.commit()
             
-            # Create admin role
-            admin_role = Admin(
-                store_id=default_store.id,
-                user_id=admin_user.id,
-                level=AdminLevel.OWNER
-            )
-            db.session.add(admin_role)
-            db.session.commit()
+#             # Create admin role
+#             admin_role = Admin(
+#                 store_id=default_store.id,
+#                 user_id=admin_user.id,
+#                 level=AdminLevel.OWNER
+#             )
+#             db.session.add(admin_role)
+#             db.session.commit()
 
 # Routes
 @app.route('/')
@@ -295,5 +296,5 @@ def internal_error(error):
     return render_template('errors/500.html'), 500
 
 if __name__ == '__main__':
-    init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # init_db()
+    app.run(debug=True, host='localhost', port=8833)

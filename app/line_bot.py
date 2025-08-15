@@ -14,7 +14,7 @@ from typing import List, Dict, Any
 
 # Import the existing agent
 from .agent import build_user_agent
-from .db import get_engine, init_db
+from .models import get_engine, init_db
 
 # LINE Bot configuration
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get('LINE_CHANNEL_ACCESS_TOKEN', '')
@@ -215,7 +215,7 @@ def handle_postback(event):
             
             if action == "view_products":
                 # Get products from database
-                from .db import SessionLocal
+                from .models import SessionLocal
                 with SessionLocal() as session:
                     from .models import Product, ProductStatus
                     products = session.query(Product).filter_by(status=ProductStatus.NORMAL).limit(10).all()
