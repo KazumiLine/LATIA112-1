@@ -117,31 +117,9 @@ def index():
     products = Product.query.filter_by(status=ProductStatus.NORMAL).limit(8).all()
     return render_template('index.html', products=products)
 
-@app.route('/login')
-def login():
-    """User login page"""
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '').strip()
-        
-        if username == 'admin' and password == 'admin1234':
-            session['user_id'] = 'admin'
-            session['user_type'] = 'admin'
-            session['username'] = 'admin'
-            flash('管理員登入成功', 'success')
-            return redirect(url_for('admin_dashboard'))
-        elif username == 'user' and password == 'user1234':
-            session['user_id'] = 'user'
-            session['user_type'] = 'user'
-            session['username'] = 'user'
-            flash('用戶登入成功', 'success')
-            return redirect(url_for('user_dashboard'))
-        else:
-            flash('帳號或密碼錯誤', 'danger')
-    
-    return render_template('login.html')
+# Remove duplicate /login here; keep admin /login defined earlier
 
-@app.route('/user/login')
+@app.route('/user/login', methods=['GET', 'POST'])
 def user_login():
     """Frontend user login page"""
     if request.method == 'POST':
