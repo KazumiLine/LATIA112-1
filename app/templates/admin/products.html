@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}管理後台 - 商品管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-box"></i> 商品管理</h3>
+    <a href="#" class="btn btn-primary" onclick="showToast('資訊','新增商品功能開發中')">
+      <i class="bi bi-plus-circle"></i> 新增商品
+    </a>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>名稱</th>
+              <th>分類</th>
+              <th>狀態</th>
+              <th>價格(首個細項)</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in products %}
+            <tr>
+              <td>#{{ p.id }}</td>
+              <td>{{ p.name }}</td>
+              <td>{{ p.catalog }}</td>
+              <td>
+                {% if p.status.value == 1 %}
+                  <span class="badge bg-success">正常</span>
+                {% else %}
+                  <span class="badge bg-secondary">隱藏</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if p.product_items %}
+                  NT$ {{ p.product_items[0].price }}
+                {% else %}—{% endif %}
+              </td>
+              <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="showToast('資訊','編輯功能開發中')"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="showToast('資訊','刪除功能開發中')"><i class="bi bi-trash"></i></button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

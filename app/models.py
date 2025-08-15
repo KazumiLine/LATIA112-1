@@ -347,8 +347,13 @@ def _json_list(lst) -> str:
 
 def init_db(seed: bool = True, echo: bool = False) -> None:
     """建立資料庫並（可選）填充 20-50 筆跨表範例資料。"""
-    event.listen(Base.metadata, "after_create", DDL(f"""DROP TABLE {ProductFullView.__tablename__};"""))
     engine = get_engine(echo=echo)
+    # 安全刪除舊的 VIEW（如果存在）
+    with engine.connect() as conn:
+        try:
+            conn.execute(text(f"DROP VIEW IF EXISTS {ProductFullView.__tablename__};"))
+        except Exception:
+            pass
     Base.metadata.create_all(engine)
 
     if not seed:

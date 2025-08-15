@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}管理後台 - 用戶管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <h3 class="mb-3"><i class="bi bi-people"></i> 用戶管理</h3>
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>帳號</th>
+              <th>姓名</th>
+              <th>Email</th>
+              <th>電話</th>
+              <th>等級</th>
+              <th>建立時間</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>#{{ u.id }}</td>
+              <td>{{ u.account }}</td>
+              <td>{{ u.name }}</td>
+              <td>{{ u.email }}</td>
+              <td>{{ u.phone or '—' }}</td>
+              <td>{{ u.level.name if u.level else '—' }}</td>
+              <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
