@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}首頁 - 商品列表{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h2 class="mb-3"><i class="bi bi-bag"></i> 商品列表</h2>
+  <div class="row g-3">
+    {% for p in products %}
+    <div class="col-md-3">
+      <div class="card product-card h-100">
+        <img src="{{ p.picture or 'https://via.placeholder.com/400x300?text=Product' }}" class="card-img-top product-image" alt="{{ p.name }}" />
+        <div class="card-body">
+          <h6 class="card-title">{{ p.name }}</h6>
+          <p class="card-text text-muted">{{ p.descriptions or '—' }}</p>
+          <div>
+            {% if p.product_items %}
+              <span class="badge bg-primary">NT$ {{ p.product_items[0].price }}</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

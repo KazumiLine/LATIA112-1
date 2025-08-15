@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}管理後台 - 訂單管理{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+  <h3 class="mb-3"><i class="bi bi-receipt"></i> 訂單管理</h3>
+  <div class="card">
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>訂單編號</th>
+              <th>客戶</th>
+              <th>金額</th>
+              <th>狀態</th>
+              <th>建立時間</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for o in orders %}
+            <tr>
+              <td>#{{ o.id }}</td>
+              <td>{{ o.user.email if o.user else '—' }}</td>
+              <td>NT$ {{ o.total }}</td>
+              <td>
+                {% if o.status.value == 1 %}
+                  <span class="badge bg-warning">待付款</span>
+                {% elif o.status.value == 2 %}
+                  <span class="badge bg-success">已付款</span>
+                {% elif o.status.value == 3 %}
+                  <span class="badge bg-info">已發貨</span>
+                {% else %}
+                  <span class="badge bg-danger">退款</span>
+                {% endif %}
+              </td>
+              <td>{{ o.created_at.strftime('%Y-%m-%d %H:%M') if o.created_at else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

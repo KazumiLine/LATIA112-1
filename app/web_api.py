@@ -12,7 +12,8 @@ from .models import (
     Base, Store, User, Product, ProductItem, Order, OrderItem, 
     Delivery, Payment, Coupon, Admin, RealName, WalletRecord, Interrogation,
     PageType, AdminLevel, CouponType, DeliveryStatus, ProductStatus, 
-    OrderStatus, PaymentStatus, UserLevel, WalletType
+    OrderStatus, PaymentStatus, UserLevel, WalletType,
+    init_db as models_init_db,
 )
 
 app = Flask(__name__)
@@ -24,56 +25,19 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 CORS(app)
 
-# Initialize database
-# def init_db():
-#     with app.app_context():
-#         db.create_all()
-        
-#         # Create default store if not exists
-#         if not Store.query.first():
-#             default_store = Store(
-#                 prefix="DEFAULT",
-#                 store_name="Default Store",
-#                 store_info="Welcome to our store!",
-#                 email="admin@example.com",
-#                 address="123 Main St, City",
-#                 phone="+886-2-1234-5678",
-#                 business_hours="9:00-18:00",
-#                 marquee=["Welcome!", "New products available!"]
-#             )
-#             db.session.add(default_store)
-#             db.session.commit()
-            
-#             # Create default admin user
-#             admin_user = User(
-#                 account="admin",
-#                 password=generate_password_hash("admin123"),
-#                 name="Administrator",
-#                 email="admin@example.com",
-#                 level=UserLevel.THIRD
-#             )
-#             db.session.add(admin_user)
-#             db.session.commit()
-            
-#             # Create admin role
-#             admin_role = Admin(
-#                 store_id=default_store.id,
-#                 user_id=admin_user.id,
-#                 level=AdminLevel.OWNER
-#             )
-#             db.session.add(admin_role)
-#             db.session.commit()
+# Provide an init function for run.py
+
+def init_db(seed: bool = False) -> None:
+    models_init_db(seed=seed, echo=False)
 
 # Routes
 @app.route('/')
 def index():
-    """Main page with product catalog"""
     products = Product.query.filter_by(status=ProductStatus.NORMAL).all()
     return render_template('index.html', products=products)
 
 @app.route('/admin')
 def admin_dashboard():
-    """Admin dashboard"""
     total_products = Product.query.count()
     total_orders = Order.query.count()
     total_users = User.query.count()
@@ -87,36 +51,32 @@ def admin_dashboard():
 
 @app.route('/admin/products')
 def admin_products():
-    """Product management page"""
     products = Product.query.all()
     return render_template('admin/products.html', products=products)
 
 @app.route('/admin/orders')
 def admin_orders():
-    """Order management page"""
     orders = Order.query.order_by(Order.created_at.desc()).all()
     return render_template('admin/orders.html', orders=orders)
 
 @app.route('/admin/users')
 def admin_users():
-    """User management page"""
     users = User.query.all()
     return render_template('admin/users.html', users=users)
 
 # API Routes
 @app.route('/api/products', methods=['GET'])
 def api_get_products():
-    """Get all products"""
     products = Product.query.all()
     result = []
     for product in products:
         product_data = {
             'id': product.id,
             'name': product.name,
-            'category': product.category,
-            'outline': product.outline,
+            'category': product.catalog,
+            'outline': product.descriptions,
             'picture': product.picture,
-            'status': product.status.value,
+            'status': product.status.value if isinstance(product.status, ProductStatus) else str(product.status),
             'product_items': []
         }
         for item in product.product_items:
@@ -132,30 +92,30 @@ def api_get_products():
 
 @app.route('/api/products', methods=['POST'])
 def api_create_product():
-    """Create a new product"""
     try:
-        data = request.get_json()
-        
-        # Create product
+        data = request.get_json() or {}
+        # Accept both new and legacy field names
+        catalog = data.get('category') or data.get('catalog') or '未分類'
+        descriptions = data.get('outline') or data.get('descriptions') or ''
+
         product = Product(
             store_id=data.get('store_id', 1),
-            category=data['category'],
+            catalog=catalog,
             name=data['name'],
-            outline=data.get('outline', ''),
+            descriptions=descriptions,
             detail=data.get('detail', ''),
             picture=data.get('picture', ''),
-            status=ProductStatus.NORMAL
+            status=ProductStatus.NORMAL,
         )
         db.session.add(product)
         db.session.flush()
         
-        # Create product items
         for item_data in data.get('product_items', []):
             item = ProductItem(
                 product_id=product.id,
                 name=item_data['name'],
-                price=item_data['price'],
-                stock=item_data['stock'],
+                price=int(item_data['price']),
+                stock=int(item_data['stock']),
                 discount=item_data.get('discount', '')
             )
             db.session.add(item)
@@ -169,17 +129,17 @@ def api_create_product():
 
 @app.route('/api/products/<int:product_id>', methods=['PUT'])
 def api_update_product(product_id):
-    """Update a product"""
     try:
         product = Product.query.get_or_404(product_id)
-        data = request.get_json()
+        data = request.get_json() or {}
         
-        product.category = data.get('category', product.category)
+        product.catalog = data.get('category', data.get('catalog', product.catalog))
         product.name = data.get('name', product.name)
-        product.outline = data.get('outline', product.outline)
+        product.descriptions = data.get('outline', data.get('descriptions', product.descriptions))
         product.detail = data.get('detail', product.detail)
         product.picture = data.get('picture', product.picture)
-        product.status = ProductStatus(data.get('status', product.status.value))
+        status_val = data.get('status', product.status.value if isinstance(product.status, ProductStatus) else product.status)
+        product.status = ProductStatus(status_val) if not isinstance(status_val, ProductStatus) else status_val
         
         db.session.commit()
         return jsonify({'success': True})
@@ -190,7 +150,6 @@ def api_update_product(product_id):
 
 @app.route('/api/products/<int:product_id>', methods=['DELETE'])
 def api_delete_product(product_id):
-    """Delete a product"""
     try:
         product = Product.query.get_or_404(product_id)
         product.status = ProductStatus.HIDE
@@ -203,33 +162,31 @@ def api_delete_product(product_id):
 
 @app.route('/api/orders', methods=['GET'])
 def api_get_orders():
-    """Get all orders"""
     orders = Order.query.order_by(Order.created_at.desc()).all()
     result = []
     for order in orders:
         order_data = {
             'id': order.id,
-            'user_email': order.user.email,
+            'user_email': order.user.email if order.user else None,
             'total': order.total,
-            'status': order.status.value,
-            'created_at': order.created_at.isoformat(),
+            'status': order.status.value if isinstance(order.status, OrderStatus) else str(order.status),
+            'created_at': order.created_at.isoformat() if hasattr(order, 'created_at') and order.created_at else None,
             'order_items': []
         }
         for item in order.order_items:
             order_data['order_items'].append({
-                'product_name': item.product_item.name,
-                'count': item.count,
-                'price': item.product_item.price
+                'product_name': item.product_item.name if item.product_item else None,
+                'count': item.quantity,
+                'price': item.product_item.price if item.product_item else None
             })
         result.append(order_data)
     return jsonify(result)
 
 @app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
 def api_update_order_status(order_id):
-    """Update order status"""
     try:
         order = Order.query.get_or_404(order_id)
-        data = request.get_json()
+        data = request.get_json() or {}
         order.status = OrderStatus(data['status'])
         db.session.commit()
         return jsonify({'success': True})
@@ -240,7 +197,6 @@ def api_update_order_status(order_id):
 
 @app.route('/api/users', methods=['GET'])
 def api_get_users():
-    """Get all users"""
     users = User.query.all()
     result = []
     for user in users:
@@ -250,31 +206,31 @@ def api_get_users():
             'name': user.name,
             'email': user.email,
             'phone': user.phone,
-            'level': user.level.value,
+            'level': user.level.value if isinstance(user.level, UserLevel) else str(user.level),
             'wallet': user.wallet,
             'award': user.award,
-            'created_at': user.created_at.isoformat()
+            'created_at': user.created_at.isoformat() if hasattr(user, 'created_at') and user.created_at else None
         }
         result.append(user_data)
     return jsonify(result)
 
 @app.route('/api/stats')
 def api_get_stats():
-    """Get dashboard statistics"""
     total_products = Product.query.count()
     total_orders = Order.query.count()
     total_users = User.query.count()
     
     # Monthly revenue
-    current_month = datetime.now().month
+    now = datetime.now()
+    start_month = datetime(now.year, now.month, 1)
     monthly_orders = Order.query.filter(
         Order.status == OrderStatus.PAID,
-        Order.created_at >= datetime(datetime.now().year, current_month, 1)
+        Order.created_at >= start_month
     ).all()
     monthly_revenue = sum(order.total for order in monthly_orders)
     
     # Product categories
-    categories = db.session.query(Product.category, db.func.count(Product.id)).group_by(Product.category).all()
+    categories = db.session.query(Product.catalog, db.func.count(Product.id)).group_by(Product.catalog).all()
     category_stats = [{'category': cat, 'count': count} for cat, count in categories]
     
     return jsonify({
@@ -296,5 +252,5 @@ def internal_error(error):
     return render_template('errors/500.html'), 500
 
 if __name__ == '__main__':
-    # init_db()
+    # init_db(seed=False)
     app.run(debug=True, host='localhost', port=8833)

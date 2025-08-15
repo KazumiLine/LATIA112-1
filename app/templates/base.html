@@ -263,7 +263,8 @@
     <!-- Main Content -->
     <div class="container-fluid">
         <div class="row">
-            {% if request.endpoint and 'admin' in request.endpoint %}
+            {% set is_admin = (request.endpoint and 'admin' in request.endpoint) %}
+            {% if is_admin %}
             <!-- Sidebar for Admin Pages -->
             <nav class="col-md-3 col-lg-2 d-md-block sidebar collapse">
                 <div class="position-sticky pt-3">
@@ -301,17 +302,12 @@
                     </ul>
                 </div>
             </nav>
-            
-            <!-- Main Content Area -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content">
-                {% block content %}{% endblock %}
-            </main>
-            {% else %}
-            <!-- Full Width Content for Public Pages -->
-            <main class="col-12">
-                {% block content %}{% endblock %}
-            </main>
             {% endif %}
+            
+            <!-- Main Content Area (single block to avoid duplicate block definitions) -->
+            <main class="{% if is_admin %}col-md-9 ms-sm-auto col-lg-10 px-md-4 main-content{% else %}col-12{% endif %}">
+                {% block content %}{% endblock %}
+            </main>
         </div>
     </div>
 
