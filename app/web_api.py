@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -6,13 +6,14 @@ from datetime import datetime, date
 import json
 import os
 from typing import List, Dict, Any
+from functools import wraps
 
 # Import models
 from .models import (
     Base, Store, User, Product, ProductItem, Order, OrderItem, 
     Delivery, Payment, Coupon, Admin, RealName, WalletRecord, Interrogation,
     PageType, AdminLevel, CouponType, DeliveryStatus, ProductStatus, 
-    OrderStatus, PaymentStatus, UserLevel, WalletType,
+    OrderStatus, PaymentStatus, UserLevel, WalletType, OrderLog,
     init_db as models_init_db,
 )
 
@@ -30,13 +31,90 @@ CORS(app)
 def init_db(seed: bool = False) -> None:
     models_init_db(seed=seed, echo=False)
 
-# Routes
+# -----------------
+# Auth helpers
+# -----------------
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('請先登入', 'warning')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return wrapper
+
+def admin_required(level: AdminLevel = AdminLevel.STAFF):
+    def decorator(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            if 'user_id' not in session:
+                flash('請先登入', 'warning')
+                return redirect(url_for('login'))
+            user = User.query.get(session['user_id'])
+            if not user:
+                session.clear()
+                return redirect(url_for('login'))
+            # Simple: treat User.level as authority
+            if user.level.value < level.value:
+                flash('權限不足', 'danger')
+                return redirect(url_for('admin_dashboard'))
+            return f(*args, **kwargs)
+        return wrapper
+    return decorator
+
+# -----------------
+# Auth routes
+# -----------------
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        account = request.form.get('account')
+        password = request.form.get('password')
+        user = User.query.filter_by(account=account).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
+            flash('登入成功', 'success')
+            return redirect(url_for('admin_dashboard'))
+        flash('帳號或密碼錯誤', 'danger')
+    return render_template('auth/login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    session.clear()
+    flash('已登出', 'info')
+    return redirect(url_for('login'))
+
+# -----------------
+# Health and metrics
+# -----------------
+
+@app.route('/healthz')
+def healthz():
+    return jsonify({'status': 'ok', 'time': datetime.utcnow().isoformat()})
+
+@app.route('/metrics')
+def metrics():
+    return jsonify({
+        'users': User.query.count(),
+        'products': Product.query.count(),
+        'orders': Order.query.count(),
+        'payments_paid': Payment.query.filter_by(status=PaymentStatus.PAID).count(),
+    })
+
+# -----------------
+# Pages
+# -----------------
+
 @app.route('/')
 def index():
     products = Product.query.filter_by(status=ProductStatus.NORMAL).all()
     return render_template('index.html', products=products)
 
 @app.route('/admin')
+@login_required
 def admin_dashboard():
     total_products = Product.query.count()
     total_orders = Order.query.count()
@@ -49,22 +127,137 @@ def admin_dashboard():
                          total_users=total_users,
                          recent_orders=recent_orders)
 
+# -----------------
+# Admin: Product CRUD
+# -----------------
+
 @app.route('/admin/products')
+@admin_required(AdminLevel.STAFF)
 def admin_products():
     products = Product.query.all()
     return render_template('admin/products.html', products=products)
 
-@app.route('/admin/orders')
-def admin_orders():
-    orders = Order.query.order_by(Order.created_at.desc()).all()
-    return render_template('admin/orders.html', orders=orders)
+@app.route('/admin/products/new', methods=['GET', 'POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_product_new():
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        catalog = request.form.get('catalog', '').strip()
+        if not name or not catalog:
+            flash('名稱與分類不可空白', 'warning')
+            return redirect(url_for('admin_product_new'))
+        p = Product(
+            store_id=1,
+            name=name,
+            catalog=catalog,
+            descriptions=request.form.get('descriptions',''),
+            detail=request.form.get('detail',''),
+            picture=request.form.get('picture',''),
+            status=ProductStatus.NORMAL,
+        )
+        db.session.add(p)
+        db.session.commit()
+        flash('商品已新增', 'success')
+        return redirect(url_for('admin_products'))
+    return render_template('admin/product_form.html', product=None)
 
-@app.route('/admin/users')
-def admin_users():
-    users = User.query.all()
-    return render_template('admin/users.html', users=users)
+@app.route('/admin/products/<int:pid>/edit', methods=['GET', 'POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_product_edit(pid):
+    p = Product.query.get_or_404(pid)
+    if request.method == 'POST':
+        p.name = request.form.get('name', p.name)
+        p.catalog = request.form.get('catalog', p.catalog)
+        p.descriptions = request.form.get('descriptions', p.descriptions)
+        p.detail = request.form.get('detail', p.detail)
+        p.picture = request.form.get('picture', p.picture)
+        db.session.commit()
+        flash('商品已更新', 'success')
+        return redirect(url_for('admin_products'))
+    return render_template('admin/product_form.html', product=p)
 
-# API Routes
+@app.route('/admin/products/<int:pid>/delete', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_product_delete(pid):
+    p = Product.query.get_or_404(pid)
+    p.status = ProductStatus.HIDE
+    db.session.commit()
+    flash('商品已隱藏', 'info')
+    return redirect(url_for('admin_products'))
+
+# -----------------
+# Admin: RawPage management with TinyMCE
+# -----------------
+
+@app.route('/admin/raw-pages')
+@admin_required(AdminLevel.MANAGER)
+def admin_raw_pages():
+    pages = Interrogation.query.limit(0)  # placeholder to reference models
+    raw_pages = []
+    from .models import RawPage
+    raw_pages = RawPage.query.order_by(RawPage.created_at.desc()).all()
+    return render_template('admin/raw_pages.html', pages=raw_pages)
+
+@app.route('/admin/raw-pages/new', methods=['GET','POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_raw_page_new():
+    from .models import RawPage
+    if request.method == 'POST':
+        rp = RawPage(
+            store_id=1,
+            type=PageType[request.form.get('type')],
+            title=request.form.get('title','').strip(),
+            image=request.form.get('image',''),
+            content=request.form.get('content',''),
+        )
+        db.session.add(rp)
+        db.session.commit()
+        flash('頁面已建立', 'success')
+        return redirect(url_for('admin_raw_pages'))
+    return render_template('admin/raw_page_form.html', page=None, page_types=list(PageType))
+
+@app.route('/admin/raw-pages/<int:rid>/edit', methods=['GET','POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_raw_page_edit(rid):
+    from .models import RawPage
+    rp = RawPage.query.get_or_404(rid)
+    if request.method == 'POST':
+        rp.type = PageType[request.form.get('type')] if request.form.get('type') else rp.type
+        rp.title = request.form.get('title', rp.title)
+        rp.image = request.form.get('image', rp.image)
+        rp.content = request.form.get('content', rp.content)
+        db.session.commit()
+        flash('頁面已更新', 'success')
+        return redirect(url_for('admin_raw_pages'))
+    return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
+
+# -----------------
+# APIs with workflow logging
+# -----------------
+
+@app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
+def api_update_order_status(order_id):
+    try:
+        order = Order.query.get_or_404(order_id)
+        data = request.get_json() or {}
+        to_status = OrderStatus(data['status'])
+        from_status = order.status
+        if from_status == OrderStatus.PENDING and to_status not in [OrderStatus.PAID, OrderStatus.REFUND]:
+            return jsonify({'success': False, 'error': '非法狀態轉移'}), 400
+        if from_status == OrderStatus.PAID and to_status not in [OrderStatus.SHIPPED, OrderStatus.REFUND]:
+            return jsonify({'success': False, 'error': '非法狀態轉移'}), 400
+        order.status = to_status
+        log = OrderLog(order_id=order.id, action='status_change', from_status=str(from_status.name), to_status=str(to_status.name), note=data.get('note'))
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+# Existing APIs below (products, users, stats)... unchanged except already fixed above
+
 @app.route('/api/products', methods=['GET'])
 def api_get_products():
     products = Product.query.all()
@@ -181,19 +374,6 @@ def api_get_orders():
             })
         result.append(order_data)
     return jsonify(result)
-
-@app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
-def api_update_order_status(order_id):
-    try:
-        order = Order.query.get_or_404(order_id)
-        data = request.get_json() or {}
-        order.status = OrderStatus(data['status'])
-        db.session.commit()
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
 
 @app.route('/api/users', methods=['GET'])
 def api_get_users():

@@ -13,6 +13,7 @@ from sqlalchemy.sql import func
 from datetime import date
 from llama_index.core import SQLDatabase
 from sqlalchemy import event, DDL, text
+from werkzeug.security import generate_password_hash
 # =========================
 # SQLAlchemy Base
 # =========================
@@ -255,6 +256,7 @@ class Order(Base, TimestampMixin):
     order_items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
     delivery = relationship("Delivery", back_populates="order", uselist=False)
     payment = relationship("Payment", back_populates="order", uselist=False)
+    logs = relationship("OrderLog", backref="order")
 
 class OrderItem(Base, TimestampMixin):
     __tablename__ = "order_items"
@@ -312,6 +314,18 @@ class Interrogation(Base, TimestampMixin):
     answer = Column(Text, nullable=True, comment="回答", key="answer")
 
     store = relationship("Store", back_populates="interrogations")
+
+class OrderLog(Base, TimestampMixin):
+    __tablename__ = "order_logs"
+
+    id = Column(Integer, primary_key=True)
+    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    action = Column(String(100), nullable=False)
+    from_status = Column(String(50), nullable=True)
+    to_status = Column(String(50), nullable=True)
+    note = Column(Text, nullable=True)
+
+    order = relationship("Order", backref="logs")
 
 class ProductFullView(Base):
     __tablename__ = "product_full_view"
@@ -434,13 +448,31 @@ def init_db(seed: bool = True, echo: bool = False) -> None:
         session.add_all(stores)
         session.flush()  # 取得 store.id
 
+        # --- Admin user (seed one)
+        admin_user = User(
+            account="admin",
+            password=generate_password_hash("admin123"),
+            name="Administrator",
+            email="admin@example.com",
+            phone="0900000000",
+            address="Taipei",
+            birthday=date(1990,1,1),
+            register_ip="127.0.0.1",
+            wallet=0,
+            award=0,
+            referee_id=None,
+            level=UserLevel.THIRD,
+        )
+        session.add(admin_user)
+        session.flush()
+
         # --- Users (10) + RealNames(6) + WalletRecords(20)
         users = []
         for i in range(10):
             nm = _rand_name(i)
             u = User(
                 account=f"user{i+1}",
-                password=f"hashed_password_{i+1}",
+                password=generate_password_hash(f"user{i+1}pass"),
                 name=nm,
                 email=_email_from_name(nm, i+1),
                 phone=f"09{random.randint(10000000, 99999999)}",
@@ -479,27 +511,12 @@ def init_db(seed: bool = True, echo: bool = False) -> None:
         for i in range(6):
             users[i].real_name_id = real_names[i].id
 
-        # WalletRecords (20)
-        wallet_records = []
-        for _ in range(20):
-            target = random.choice(users)
-            from_user = random.choice(users + [None])
-            w = WalletRecord(
-                user_id=target.id,
-                from_id=(from_user.id if from_user else None),
-                amount=round(random.uniform(-500, 1200), 2),
-                type=random.choice(list(WalletType)),
-                comment="系統測試紀錄"
-            )
-            wallet_records.append(w)
-        session.add_all(wallet_records)
-
-        # --- Admins (4) 綁定不同層級
+        # --- Admins: bind admin_user as OWNER to first store
         admins = [
-            Admin(store_id=stores[0].id, user_id=users[0].id, level=AdminLevel.OWNER, notify_token=None),
-            Admin(store_id=stores[0].id, user_id=users[1].id, level=AdminLevel.MANAGER, notify_token=None),
-            Admin(store_id=stores[1].id, user_id=users[2].id, level=AdminLevel.MANAGER, notify_token=None),
-            Admin(store_id=stores[2].id, user_id=users[3].id, level=AdminLevel.STAFF, notify_token=None),
+            Admin(store_id=stores[0].id, user_id=admin_user.id, level=AdminLevel.OWNER, notify_token=None),
+            Admin(store_id=stores[0].id, user_id=users[0].id, level=AdminLevel.MANAGER, notify_token=None),
+            Admin(store_id=stores[1].id, user_id=users[1].id, level=AdminLevel.MANAGER, notify_token=None),
+            Admin(store_id=stores[2].id, user_id=users[2].id, level=AdminLevel.STAFF, notify_token=None),
         ]
         session.add_all(admins)
 
@@ -619,7 +636,6 @@ def init_db(seed: bool = True, echo: bool = False) -> None:
             oi1 = OrderItem(order_id=o.id, product_item_id=chosen_items[0].id, quantity=q1)
             oi2 = OrderItem(order_id=o.id, product_item_id=chosen_items[1].id, quantity=q2)
             order_items.extend([oi1, oi2])
-
 
         session.add_all(order_items + deliveries + payments)
 
