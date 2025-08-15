@@ -141,6 +141,16 @@ def admin_orders():
     return render_template('admin/orders.html', orders=orders)
 
 # -----------------
+# Admin: Users
+# -----------------
+
+@app.route('/admin/users')
+@admin_required(AdminLevel.MANAGER)
+def admin_users():
+    users = User.query.order_by(User.created_at.desc()).all()
+    return render_template('admin/users.html', users=users)
+
+# -----------------
 # Admin: Product CRUD
 # -----------------
 
@@ -182,7 +192,10 @@ def admin_product_new():
 @app.route('/admin/products/<int:pid>/edit', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_product_edit(pid):
-    p = Product.query.get_or_404(pid)
+    p = Product.query.get(pid)
+    if not p:
+        flash('商品不存在', 'danger')
+        return redirect(url_for('admin_products'))
     if request.method == 'POST':
         p.name = request.form.get('name', p.name)
         p.catalog = request.form.get('catalog', p.catalog)
@@ -197,7 +210,10 @@ def admin_product_edit(pid):
 @app.route('/admin/products/<int:pid>/delete', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_product_delete(pid):
-    p = Product.query.get_or_404(pid)
+    p = Product.query.get(pid)
+    if not p:
+        flash('商品不存在', 'danger')
+        return redirect(url_for('admin_products'))
     p.status = ProductStatus.HIDE
     db.session.commit()
     flash('商品已隱藏', 'info')
@@ -210,7 +226,10 @@ def admin_product_delete(pid):
 @app.route('/admin/products/<int:pid>/items', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_product_items(pid):
-    p = Product.query.get_or_404(pid)
+    p = Product.query.get(pid)
+    if not p:
+        flash('商品不存在', 'danger')
+        return redirect(url_for('admin_products'))
     if request.method == 'POST':
         name = request.form.get('name','').strip()
         price = int(request.form.get('price','0') or 0)
@@ -229,7 +248,10 @@ def admin_product_items(pid):
 @app.route('/admin/items/<int:item_id>/edit', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_item_edit(item_id):
-    it = ProductItem.query.get_or_404(item_id)
+    it = ProductItem.query.get(item_id)
+    if not it:
+        flash('商品細項不存在', 'danger')
+        return redirect(url_for('admin_products'))
     it.name = request.form.get('name', it.name)
     it.price = int(request.form.get('price', it.price))
     it.stock = int(request.form.get('stock', it.stock))
@@ -241,7 +263,10 @@ def admin_item_edit(item_id):
 @app.route('/admin/items/<int:item_id>/delete', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_item_delete(item_id):
-    it = ProductItem.query.get_or_404(item_id)
+    it = ProductItem.query.get(item_id)
+    if not it:
+        flash('商品細項不存在', 'danger')
+        return redirect(url_for('admin_products'))
     pid = it.product_id
     db.session.delete(it)
     db.session.commit()
@@ -271,7 +296,10 @@ def admin_coupons():
 @app.route('/admin/coupons/<int:cid>/edit', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_coupons_edit(cid):
-    cp = Coupon.query.get_or_404(cid)
+    cp = Coupon.query.get(cid)
+    if not cp:
+        flash('優惠券不存在', 'danger')
+        return redirect(url_for('admin_coupons'))
     cp.type = CouponType(int(request.form.get('type', cp.type.value)))
     cp.discount = int(request.form.get('discount', cp.discount))
     cp.min_price = int(request.form.get('min_price', cp.min_price))
@@ -283,9 +311,11 @@ def admin_coupons_edit(cid):
 @app.route('/admin/coupons/<int:cid>/delete', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_coupons_delete(cid):
-    cp = Coupon.query.get_or_404(cid)
+    cp = Coupon.query.get(cid)
+    if not cp:
+        flash('優惠券不存在', 'danger')
+        return redirect(url_for('admin_coupons'))
     db.session.delete(cp)
-    db.session.commit()
     flash('優惠券已刪除', 'info')
     return redirect(url_for('admin_coupons'))
 
@@ -324,7 +354,10 @@ def admin_raw_page_new():
 @admin_required(AdminLevel.MANAGER)
 def admin_raw_page_edit(rid):
     from .models import RawPage
-    rp = RawPage.query.get_or_404(rid)
+    rp = RawPage.query.get(rid)
+    if not rp:
+        flash('頁面不存在', 'danger')
+        return redirect(url_for('admin_raw_pages'))
     if request.method == 'POST':
         rp.type = PageType[request.form.get('type')] if request.form.get('type') else rp.type
         rp.title = request.form.get('title', rp.title)
@@ -334,6 +367,49 @@ def admin_raw_page_edit(rid):
         flash('頁面已更新', 'success')
         return redirect(url_for('admin_raw_pages'))
     return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
+
+# -----------------
+# Admin: Orders status update (edit)
+# -----------------
+
+@app.route('/admin/orders/<int:order_id>/status', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def admin_order_update_status(order_id):
+    try:
+        order = Order.query.get(order_id)
+        if not order:
+            flash('訂單不存在', 'danger')
+            return redirect(url_for('admin_orders'))
+        to_status_val = int(request.form.get('status'))
+        to_status = OrderStatus(to_status_val)
+        from_status = order.status
+        # Validate transitions
+        if from_status == OrderStatus.PENDING and to_status not in [OrderStatus.PAID, OrderStatus.REFUND]:
+            flash('非法狀態轉移：待付款只能改為 已付款 或 退款', 'warning')
+            return redirect(url_for('admin_orders'))
+        if from_status == OrderStatus.PAID and to_status not in [OrderStatus.SHIPPED, OrderStatus.REFUND]:
+            flash('非法狀態轉移：已付款只能改為 已發貨 或 退款', 'warning')
+            return redirect(url_for('admin_orders'))
+        # Sync payment and stock
+        if to_status == OrderStatus.PAID:
+            if order.payment:
+                order.payment.status = PaymentStatus.PAID
+        if to_status == OrderStatus.REFUND:
+            # restock items
+            for oi in order.order_items:
+                if oi.product_item:
+                    oi.product_item.stock += oi.quantity
+            if order.payment:
+                order.payment.status = PaymentStatus.REFUNDED
+        order.status = to_status
+        log = OrderLog(order_id=order.id, action='status_change', from_status=str(from_status.name), to_status=str(to_status.name), note='admin panel update')
+        db.session.add(log)
+        db.session.commit()
+        flash('訂單狀態已更新', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'更新失敗：{e}', 'danger')
+    return redirect(url_for('admin_orders'))
 
 # -----------------
 # APIs with workflow logging and creation
@@ -398,7 +474,9 @@ def api_create_order():
 @app.route('/api/orders/<int:order_id>/status', methods=['PUT'])
 def api_update_order_status(order_id):
     try:
-        order = Order.query.get_or_404(order_id)
+        order = Order.query.get(order_id)
+        if not order:
+            return jsonify({'success': False, 'error': '訂單不存在'}), 404
         data = request.get_json() or {}
         to_status = OrderStatus(data['status'])
         from_status = order.status
@@ -495,7 +573,9 @@ def api_create_product_api():
 @app.route('/api/products/<int:product_id>', methods=['PUT'])
 def api_update_product(product_id):
     try:
-        product = Product.query.get_or_404(product_id)
+        product = Product.query.get(product_id)
+        if not product:
+            return jsonify({'success': False, 'error': '商品不存在'}), 404
         data = request.get_json() or {}
         
         product.catalog = data.get('category', data.get('catalog', product.catalog))
@@ -516,7 +596,9 @@ def api_update_product(product_id):
 @app.route('/api/products/<int:product_id>', methods=['DELETE'])
 def api_delete_product(product_id):
     try:
-        product = Product.query.get_or_404(product_id)
+        product = Product.query.get(product_id)
+        if not product:
+            return jsonify({'success': False, 'error': '商品不存在'}), 404
         product.status = ProductStatus.HIDE
         db.session.commit()
         return jsonify({'success': True})
