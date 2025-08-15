@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title if page else '頁面' }}{% endblock %}
+{% block content %}
+<div class="container py-4">
+  {% if page %}
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card">
+        <div class="card-body">
+          <h3 class="mb-3">{{ page.title }}</h3>
+          {% if page.image %}
+          <img src="{{ page.image }}" class="img-fluid rounded mb-3" alt="{{ page.title }}">
+          {% endif %}
+          <div class="content">{{ page.content | safe }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center text-muted py-5">尚未設定頁面內容</div>
+  {% endif %}
+</div>
+{% endblock %}

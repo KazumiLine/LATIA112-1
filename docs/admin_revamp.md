@@ -314,3 +314,36 @@
 10. ✅ 完整的前端購物體驗
 
 系統已準備好進行全面測試與部署，並提供了五個優化建議方向供未來發展參考。
+
+## 本輪更新（2025-08-15）
+
+- 修正：用戶儀表板 `GET /user/dashboard` 缺失模板，新增 `app/templates/user/dashboard.html`
+- 修正：後台儀表板「總用戶數」「本月營收」顯示異常
+  - 新增 `GET /api/stats` 回傳 `total_users`、`monthly_revenue`、`category_stats`
+  - 後台頁面綁定 `{{ total_users }}`、`{{ monthly_revenue }}`
+- 修正：主題切換器收合按鈕位置（右下角，向右收縮）
+- 調整：前端 Navbar 連結
+  - `/about`、`/contact`、`/privacy`、`/terms` 對應 `RawPage` 頁面管理
+  - 新增 `raw_page.html` 模板供渲染
+- 新增：AI 客服浮動按鈕與右下角對話框
+  - API：`POST /api/chat/session` 建立會話、`POST /api/chat` 送交訊息並持久化
+  - DB：新增 `ChatSession` 與 `ChatMessage` 資料表
+- 新增：加入購物車彈窗（規格/數量選擇）
+  - API：`GET /api/products/<product_id>` 取得細項
+  - 前端：變體選擇 Modal、數量調整
+- 新增：購物車清單可增減數量、刪除；結帳步驟（配送/付款/確認），`POST /api/orders` 建立訂單
+- 修正：SQLAlchemy 2.x `Query.get()` 相關用法，統一使用 `db.session.get()`
+- 客服管理：頁面與回覆表單調整，串接資料表預留位
+
+### 本輪 API 端點清單
+- `GET /api/stats`：{ total_products, total_orders, total_users, monthly_orders, monthly_revenue, category_stats }
+- `GET /api/products/<product_id>`：單一商品含細項
+- `POST /api/chat/session`：建立聊天會話
+- `POST /api/chat`：發送訊息並保存紀錄
+
+### 可再優化（Top 5）
+- 以 `product_full_view` 或新 API 提供購物車項目之價格與名稱，前端即時計算總計
+- 結帳流程導入真實支付閘道（與 `Payment` 狀態聯動）
+- RawPage 支援自訂路徑 slug 與 SEO meta
+- 客服管理串接真人客服通道與通知（Email/LINE Notify）
+- 儀表板圖表改為即時資料並加入快取層（Redis）

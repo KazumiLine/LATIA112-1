@@ -130,10 +130,16 @@
                         <a class="nav-link" href="#products">商品</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#about">關於我們</a>
+                        <a class="nav-link" href="/about">關於我們</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="#contact">聯絡我們</a>
+                        <a class="nav-link" href="/contact">聯絡我們</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/privacy">隱私政策</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/terms">使用條款</a>
                     </li>
                 </ul>
                 
@@ -302,8 +308,45 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="cartItems">
-                        <!-- Cart items will be loaded here -->
+                    <div id="cartItems"></div>
+                    <div id="checkoutSteps" class="mt-4" style="display:none;">
+                        <ul class="nav nav-pills mb-3" id="pills-tab" role="tablist">
+                          <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="pills-cart-tab" data-bs-toggle="pill" data-bs-target="#pills-cart" type="button">購物車</button>
+                          </li>
+                          <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="pills-delivery-tab" data-bs-toggle="pill" data-bs-target="#pills-delivery" type="button">配送資料</button>
+                          </li>
+                          <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="pills-payment-tab" data-bs-toggle="pill" data-bs-target="#pills-payment" type="button">付款資料</button>
+                          </li>
+                          <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="pills-confirm-tab" data-bs-toggle="pill" data-bs-target="#pills-confirm" type="button">確認訂單</button>
+                          </li>
+                        </ul>
+                        <div class="tab-content" id="pills-tabContent">
+                          <div class="tab-pane fade show active" id="pills-cart"></div>
+                          <div class="tab-pane fade" id="pills-delivery">
+                            <div class="row g-3">
+                              <div class="col-md-6"><input class="form-control" id="deliveryName" placeholder="收件人姓名"></div>
+                              <div class="col-md-6"><input class="form-control" id="deliveryPhone" placeholder="手機"></div>
+                              <div class="col-12"><input class="form-control" id="deliveryAddress" placeholder="配送地址"></div>
+                              <div class="col-12"><input class="form-control" id="deliveryNote" placeholder="備註（選填）"></div>
+                            </div>
+                          </div>
+                          <div class="tab-pane fade" id="pills-payment">
+                            <div class="row g-3">
+                              <div class="col-md-6"><input class="form-control" id="cardNumber" placeholder="信用卡號"></div>
+                              <div class="col-md-3"><input class="form-control" id="cardExpiry" placeholder="有效期限 MM/YY"></div>
+                              <div class="col-md-3"><input class="form-control" id="cardCVC" placeholder="CVC"></div>
+                              <div class="col-12"><input class="form-control" id="cardName" placeholder="持卡人姓名"></div>
+                            </div>
+                          </div>
+                          <div class="tab-pane fade" id="pills-confirm">
+                            <div id="confirmSummary"></div>
+                            <button class="btn btn-primary mt-3" onclick="placeOrder()">送出訂單</button>
+                          </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -313,12 +356,63 @@
                         </div>
                         <div>
                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">繼續購物</button>
-                            <button type="button" class="btn btn-primary" onclick="checkout()">結帳</button>
+                            <button type="button" class="btn btn-primary" onclick="startCheckout()">結帳</button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Variant Selection Modal -->
+    <div class="modal fade" id="variantModal" tabindex="-1">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="variantTitle">選擇商品規格</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="variantOptions"></div>
+            <div class="d-flex align-items-center mt-3">
+              <label class="me-2">數量</label>
+              <div class="input-group" style="width: 140px;">
+                <button class="btn btn-outline-secondary" type="button" onclick="changeQuantity(-1)">-</button>
+                <input type="number" class="form-control text-center" id="variantQty" value="1" min="1">
+                <button class="btn btn-outline-secondary" type="button" onclick="changeQuantity(1)">+</button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-primary" onclick="confirmAddToCart()">加入購物車</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floating AI Chat Button and Popup -->
+    <style>
+      .chat-fab { position: fixed; right: 20px; bottom: 90px; width:56px; height:56px; border-radius:50%; background: var(--primary-color); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow: 0 6px 18px rgba(0,0,0,0.2); z-index:1050; cursor:pointer; }
+      .chat-popup { position: fixed; right: 20px; bottom: 160px; width: 320px; max-height: 60vh; background:#fff; border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); display:none; flex-direction:column; overflow:hidden; z-index:1050; }
+      .chat-header { background: var(--primary-color); color:#fff; padding:10px 12px; }
+      .chat-body { padding:10px; overflow:auto; max-height: 45vh; }
+      .chat-input { display:flex; gap:8px; padding:10px; border-top:1px solid #eee; }
+      .chat-msg { background:#f5f7fb; border-radius:12px; padding:8px 10px; margin:6px 0; }
+      .chat-msg.ai { background:#e7f1ff; }
+    </style>
+    <div class="chat-fab" onclick="toggleChatPopup()"><i class="bi bi-chat-dots"></i></div>
+    <div class="chat-popup" id="chatPopup">
+      <div class="chat-header d-flex justify-content-between align-items-center">
+        <div><i class="bi bi-robot"></i> AI 客服</div>
+        <button class="btn btn-sm btn-light" onclick="toggleChatPopup()">關閉</button>
+      </div>
+      <div class="chat-body" id="chatBody">
+        <div class="chat-msg ai">您好！我是智能客服助手，請問需要什麼協助？</div>
+      </div>
+      <div class="chat-input">
+        <input id="chatText" class="form-control" placeholder="輸入訊息..." onkeydown="if(event.key==='Enter'){sendChat()}" />
+        <button class="btn btn-primary" onclick="sendChat()">送出</button>
+      </div>
     </div>
 
     <!-- Bootstrap 5 JS -->
@@ -327,22 +421,56 @@
     <script>
         // Shopping cart functionality
         let cart = JSON.parse(localStorage.getItem('cart') || '[]');
+        let selectingProductId = null;
+        let selectedItemId = null;
+        let chatSessionId = null;
         
         function updateCartCount() {
             const count = cart.reduce((total, item) => total + item.quantity, 0);
             document.getElementById('cartCount').textContent = count;
         }
         
-        function addToCart(productId) {
-            const existingItem = cart.find(item => item.productId === productId);
-            if (existingItem) {
-                existingItem.quantity += 1;
-            } else {
-                cart.push({ productId, quantity: 1 });
+        async function addToCart(productId) {
+            selectingProductId = productId;
+            // Fetch product items for variant selection
+            const res = await fetch(`/api/products/${productId}`);
+            const data = await res.json();
+            if (!data.items || data.items.length === 0) {
+                showToast('錯誤', '此商品沒有可選規格', 'error');
+                return;
             }
+            const list = data.items.map(it => `
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="variant" id="var_${it.id}" value="${it.id}" ${it.stock>0?'':'disabled'} onchange="selectedItemId=${it.id}">
+                <label class="form-check-label" for="var_${it.id}">
+                  ${it.name} - NT$ ${it.price.toLocaleString()} ${it.stock>0?'':'(缺貨)'}
+                </label>
+              </div>`).join('');
+            document.getElementById('variantOptions').innerHTML = list;
+            document.getElementById('variantTitle').textContent = `選擇規格 - ${data.name}`;
+            document.getElementById('variantQty').value = 1;
+            selectedItemId = (data.items.find(it=>it.stock>0)||data.items[0]).id;
+            const vm = new bootstrap.Modal(document.getElementById('variantModal'));
+            vm.show();
+        }
+        
+        function changeQuantity(delta){
+            const qtyEl = document.getElementById('variantQty');
+            let v = parseInt(qtyEl.value||'1',10) + delta;
+            if (v < 1) v = 1;
+            qtyEl.value = v;
+        }
+        
+        function confirmAddToCart(){
+            const qty = parseInt(document.getElementById('variantQty').value||'1',10);
+            if (!selectedItemId) { showToast('錯誤','請先選擇規格','error'); return; }
+            // Push to cart
+            const existing = cart.find(i=>i.productItemId===selectedItemId);
+            if (existing) existing.quantity += qty; else cart.push({ productItemId: selectedItemId, quantity: qty });
             localStorage.setItem('cart', JSON.stringify(cart));
             updateCartCount();
             showToast('成功', '商品已加入購物車', 'success');
+            bootstrap.Modal.getInstance(document.getElementById('variantModal')).hide();
         }
         
         function showCart() {
@@ -351,28 +479,111 @@
             modal.show();
         }
         
-        function loadCartItems() {
+        async function loadCartItems() {
             const cartItems = document.getElementById('cartItems');
             if (cart.length === 0) {
                 cartItems.innerHTML = '<p class="text-center text-muted">購物車是空的</p>';
+                document.getElementById('cartTotal').textContent = 0;
                 return;
             }
-            
-            // Load cart items (simplified for demo)
-            cartItems.innerHTML = '<p class="text-center text-muted">購物車功能開發中...</p>';
+            // Fetch item details in parallel
+            const ids = cart.map(i=>i.productItemId);
+            // Map productItemId -> details via products API by reverse lookup not provided; simplify: show ids
+            let total = 0;
+            const rows = cart.map(i=>{
+                const line = `<div class="d-flex align-items-center justify-content-between border-bottom py-2">
+                  <div>
+                    <div class="fw-semibold">項目 #${i.productItemId}</div>
+                    <div class="text-muted">數量：
+                      <button class="btn btn-sm btn-outline-secondary" onclick="changeCartQty(${i.productItemId}, -1)">-</button>
+                      <span class="mx-2" id="qty_${i.productItemId}">${i.quantity}</span>
+                      <button class="btn btn-sm btn-outline-secondary" onclick="changeCartQty(${i.productItemId}, 1)">+</button>
+                    </div>
+                  </div>
+                  <div>
+                    <button class="btn btn-sm btn-outline-danger" onclick="removeCartItem(${i.productItemId})"><i class="bi bi-trash"></i></button>
+                  </div>
+                </div>`;
+                return line;
+            }).join('');
+            cartItems.innerHTML = rows;
+            // Without price lookup, keep total as 0 placeholder; could be enhanced by joining product_full_view via new API
+            document.getElementById('cartTotal').textContent = total.toLocaleString();
+            document.getElementById('pills-cart').innerHTML = rows;
         }
         
-        function checkout() {
+        function changeCartQty(itemId, delta){
+            const it = cart.find(i=>i.productItemId===itemId);
+            if (!it) return;
+            it.quantity += delta;
+            if (it.quantity < 1) it.quantity = 1;
+            localStorage.setItem('cart', JSON.stringify(cart));
+            document.getElementById(`qty_${itemId}`).textContent = it.quantity;
+            updateCartCount();
+        }
+        
+        function removeCartItem(itemId){
+            cart = cart.filter(i=>i.productItemId!==itemId);
+            localStorage.setItem('cart', JSON.stringify(cart));
+            loadCartItems();
+            updateCartCount();
+        }
+        
+        function startCheckout(){
+            document.getElementById('checkoutSteps').style.display = 'block';
+            const pillsDelivery = new bootstrap.Tab(document.getElementById('pills-delivery-tab'));
+            pillsDelivery.show();
+        }
+        
+        function checkout() { startCheckout(); }
+        
+        async function placeOrder(){
             if (!sessionStorage.getItem('user_id')) {
                 showToast('錯誤', '請先登入', 'error');
                 return;
             }
-            showToast('資訊', '結帳功能開發中...', 'info');
+            if (cart.length === 0){
+                showToast('錯誤','購物車為空','error');
+                return;
+            }
+            const payload = { items: cart.map(i=>({ product_item_id: i.productItemId, quantity: i.quantity })) };
+            const res = await fetch('/api/orders', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            const data = await res.json();
+            if (data.error){ showToast('錯誤', data.error, 'error'); return; }
+            showToast('成功', '訂單已建立', 'success');
+            cart = [];
+            localStorage.setItem('cart', JSON.stringify(cart));
+            updateCartCount();
+            bootstrap.Modal.getInstance(document.getElementById('cartModal')).hide();
         }
         
-        function showToast(title, message, type = 'info') {
-            // Simple toast implementation
-            alert(`${title}: ${message}`);
+        // AI Chat popup
+        function toggleChatPopup(){
+          const el = document.getElementById('chatPopup');
+          el.style.display = (el.style.display==='flex') ? 'none' : 'flex';
+          if (el.style.display==='flex' && !chatSessionId){
+            fetch('/api/chat/session', { method:'POST' }).then(r=>r.json()).then(d=>{ chatSessionId = d.session_id; });
+          }
+        }
+        function addChatMessage(text, isAi){
+          const body = document.getElementById('chatBody');
+          const div = document.createElement('div');
+          div.className = 'chat-msg' + (isAi?' ai':'');
+          div.textContent = text;
+          body.appendChild(div);
+          body.scrollTop = body.scrollHeight;
+        }
+        function sendChat(){
+          const input = document.getElementById('chatText');
+          const msg = (input.value||'').trim();
+          if (!msg) return;
+          addChatMessage(msg, false);
+          input.value = '';
+          fetch('/api/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ message: msg, session_id: chatSessionId }) })
+            .then(r=>r.json()).then(d=>{
+              if (d && d.response){ addChatMessage(d.response, true); chatSessionId = d.session_id || chatSessionId; }
+              else { addChatMessage('抱歉，系統忙碌中，請稍後再試。', true); }
+            }).catch(()=> addChatMessage('抱歉，系統忙碌中，請稍後再試。', true));
         }
         
         // Initialize cart count

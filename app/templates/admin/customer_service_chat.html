@@ -73,32 +73,10 @@
           <h5 class="mb-0"><i class="bi bi-reply"></i> 回覆用戶</h5>
         </div>
         <div class="card-body">
-          <form method="post" action="{{ url_for('admin_customer_service_reply', chat_id=chat.id) }}">
-            <div class="mb-3">
-              <label class="form-label fw-bold">回覆內容</label>
-              <textarea class="form-control" name="message" rows="4" placeholder="請輸入回覆內容..." required></textarea>
-            </div>
-            <div class="mb-3">
-              <label class="form-label fw-bold">快速回覆</label>
-              <div class="d-grid gap-2">
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('感謝您的詢問，我們會盡快處理。')">
-                  感謝詢問
-                </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('抱歉造成不便，我們會立即改善。')">
-                  道歉回覆
-                </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('請稍等，我為您查詢相關資訊。')">
-                  請稍等
-                </button>
-                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="insertQuickReply('如果無法解決您的問題，請等待真人客服回覆。')">
-                  無法解決
-                </button>
-              </div>
-            </div>
-            <div class="d-grid">
-              <button type="submit" class="btn btn-primary">
-                <i class="bi bi-send"></i> 發送回覆
-              </button>
+          <form class="mt-3" method="post" action="{{ url_for('admin_customer_service_reply', chat_id=chat.id) }}">
+            <div class="input-group">
+              <input class="form-control" name="message" placeholder="輸入回覆內容..." />
+              <button class="btn btn-primary" type="submit">發送</button>
             </div>
           </form>
         </div>

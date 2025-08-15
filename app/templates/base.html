@@ -324,11 +324,14 @@ LOBODY>
             position: fixed;
             bottom: 20px;
             right: 20px;
-            z-index: 1001;
-            background: white;
-            border-radius: 25px;
-            padding: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            z-index: 1050;
+            background: var(--sidebar-bg);
+            padding: 10px 46px 10px 46px; /* leave space for toggle button */
+            border-radius: 30px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 6px;
             transition: transform 0.3s ease;
         }
 
@@ -345,19 +348,20 @@ LOBODY>
 
         .theme-switcher .toggle-btn {
             position: absolute;
-            left: 8px;
+            right: 8px; /* anchor to right edge */
             top: 50%;
             transform: translateY(-50%);
             background: var(--primary-color);
             color: white;
             border: none;
             border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            width: 32px;
+            height: 32px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
             transition: all 0.3s ease;
         }
 
@@ -422,6 +426,10 @@ LOBODY>
                             <i class="bi bi-house"></i> 首頁
                         </a>
                     </li>
+                    <li class="nav-item"><a class="nav-link" href="/about">關於我們</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/contact">聯絡我們</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/privacy">隱私政策</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/terms">使用條款</a></li>
                     <li class="nav-item">
                         <a class="nav-link" href="/admin">
                             <i class="bi bi-speedometer2"></i> 管理後台
@@ -548,8 +556,16 @@ LOBODY>
                 btn.classList.remove('btn-primary');
                 btn.classList.add('btn-outline-primary');
             });
-            event.target.classList.remove('btn-outline-primary');
-            event.target.classList.add('btn-primary');
+            
+            if (window.event && window.event.target) {
+                window.event.target.classList.add('btn-primary');
+            } else {
+                const activeBtn = document.querySelector(`.theme-switcher [data-theme="${theme}"]`);
+                if (activeBtn) {
+                    activeBtn.classList.remove('btn-outline-primary');
+                    activeBtn.classList.add('btn-primary');
+                }
+            }
         }
 
         function toggleThemeSwitcher() {

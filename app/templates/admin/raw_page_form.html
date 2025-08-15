@@ -81,12 +81,12 @@
               <option value="">請選擇類型</option>
               {% for t in page_types %}
                 <option value="{{ t.name }}" {% if page and page.type == t %}selected{% endif %}>
-                  {% if t.name == 'ABOUT' %}關於我們
-                  {% elif t.name == 'TERMS' %}服務條款
-                  {% elif t.name == 'PRIVACY' %}隱私政策
-                  {% elif t.name == 'FAQ' %}常見問題
-                  {% elif t.name == 'CONTACT' %}聯絡我們
-                  {% elif t.name == 'CUSTOM' %}自訂頁面
+                  {% if t.name == 'ABOUT_US' %}關於我們
+                  {% elif t.name == 'TERM_SERVICE' %}服務條款
+                  {% elif t.name == 'PRIVACY_POLICY' %}隱私政策
+                  {% elif t.name == 'CONTACT_US' %}聯絡我們
+                  {% elif t.name == 'COOPERATE_MEETING' %}合作洽談
+                  {% elif t.name == 'AGENT_RECRUITMENT' %}代理招募
                   {% else %}{{ t.value }}{% endif %}
                 </option>
               {% endfor %}

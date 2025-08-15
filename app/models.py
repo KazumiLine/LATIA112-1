@@ -41,6 +41,8 @@ class PageType(str, enum.Enum):
     TERM_SERVICE = "服務條款"
     COOPERATE_MEETING = "合作洽談"
     AGENT_RECRUITMENT = "代理招募"
+    PRIVACY_POLICY = "隱私政策"
+    CONTACT_US = "聯絡我們"
 
 class AdminLevel(int, enum.Enum):
     STAFF = 1      # Staff can only view and manage orders
@@ -238,6 +240,29 @@ class ProductItem(Base, TimestampMixin):
     product = relationship("Product", back_populates="product_items")
     order_items = relationship("OrderItem", back_populates="product_item")
 
+# --- Customer Service (Chat) ---
+class ChatSession(Base, TimestampMixin):
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, key="id")
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=False, key="store_id")
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, key="user_id")
+    status = Column(String(20), nullable=False, default="ai", key="status")  # ai, human, resolved
+
+    store = relationship("Store")
+    user = relationship("User")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
+
+class ChatMessage(Base, TimestampMixin):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, key="id")
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), nullable=False, key="session_id")
+    sender = Column(String(20), nullable=False, key="sender")  # user, ai, admin
+    content = Column(Text, nullable=False, key="content")
+
+    session = relationship("ChatSession", back_populates="messages")
+
 class Order(Base, TimestampMixin):
     __tablename__ = "orders"
 
@@ -380,7 +405,7 @@ def init_db(seed: bool = True, echo: bool = False) -> None:
         ).fetchone()
         if not result:
             session.execute(text("""
-                CREATE VIEW product_full_view AS
+                CREATE VIEW IF NOT EXISTS product_full_view AS
                 SELECT
                     p.name || ' - ' || pi.name AS full_name,
                     p.id AS product_id,
@@ -399,7 +424,49 @@ def init_db(seed: bool = True, echo: bool = False) -> None:
                 WHERE p.status = 'NORMAL';
             """))
             session.commit()
-        # 若已存在資料就不重複填充
+        # --- Ensure baseline accounts exist even if DB already seeded ---
+        # Admin
+        admin_user = session.query(User).filter_by(account="admin").first()
+        if not admin_user:
+            admin_user = User(
+                account="admin",
+                password=generate_password_hash("admin1234"),
+                name="Administrator",
+                email="admin@example.com",
+                phone="0900000000",
+                address="Taipei",
+                birthday=date(1990,1,1),
+                register_ip="127.0.0.1",
+                wallet=0,
+                award=0,
+                referee_id=None,
+                level=UserLevel.THIRD,
+            )
+            session.add(admin_user)
+            session.flush()
+        else:
+            # 確保密碼符合文件說明
+            admin_user.password = generate_password_hash("admin1234")
+        # Test user
+        demo_user = session.query(User).filter_by(account="user").first()
+        if not demo_user:
+            demo_user = User(
+                account="user",
+                password=generate_password_hash("user1234"),
+                name="Demo User",
+                email="user@example.com",
+                phone="0912345678",
+                address="Taipei",
+                birthday=date(1995,5,15),
+                register_ip="127.0.0.1",
+                wallet=0,
+                award=0,
+                referee_id=None,
+                level=UserLevel.FIRST,
+            )
+            session.add(demo_user)
+            session.flush()
+        # 如果已存在資料就不重複大量填充
         if session.query(Store).count() > 0:
             session.commit()
             return
@@ -449,22 +516,7 @@ def init_db(seed: bool = True, echo: bool = False) -> None:
         session.flush()  # 取得 store.id
 
         # --- Admin user (seed one)
-        admin_user = User(
-            account="admin",
-            password=generate_password_hash("admin123"),
-            name="Administrator",
-            email="admin@example.com",
-            phone="0900000000",
-            address="Taipei",
-            birthday=date(1990,1,1),
-            register_ip="127.0.0.1",
-            wallet=0,
-            award=0,
-            referee_id=None,
-            level=UserLevel.THIRD,
-        )
-        session.add(admin_user)
-        session.flush()
+        # This block is now handled by the new_code, so it's removed.
 
         # --- Users (10) + RealNames(6) + WalletRecords(20)
         users = []
@@ -524,10 +576,10 @@ def init_db(seed: bool = True, echo: bool = False) -> None:
         raw_pages = [
             RawPage(store_id=stores[0].id, type=PageType.ABOUT_US, title="關於主力商城", image=None, content="我們致力於提供最優質商品"),
             RawPage(store_id=stores[0].id, type=PageType.TERM_SERVICE, title="服務條款", image=None, content="使用前請詳閱服務條款"),
+            RawPage(store_id=stores[0].id, type=PageType.PRIVACY_POLICY, title="隱私政策", image=None, content="我們重視您的隱私"),
+            RawPage(store_id=stores[0].id, type=PageType.CONTACT_US, title="聯絡我們", image=None, content="service@main.example.com"),
             RawPage(store_id=stores[1].id, type=PageType.COOPERATE_MEETING, title="合作洽談", image=None, content="歡迎品牌合作"),
             RawPage(store_id=stores[1].id, type=PageType.AGENT_RECRUITMENT, title="代理招募", image=None, content="尋找區域代理"),
-            RawPage(store_id=stores[2].id, type=PageType.ABOUT_US, title="關於美妝小舖", image=None, content="美麗從這裡開始"),
-            RawPage(store_id=stores[2].id, type=PageType.TERM_SERVICE, title="服務條款", image=None, content="退換貨與保固說明"),
         ]
         session.add_all(raw_pages)
 
@@ -655,5 +707,6 @@ def get_sql_database():
             Order.__tablename__, OrderItem.__tablename__,
             Delivery.__tablename__, Payment.__tablename__,
             WalletRecord.__tablename__, Interrogation.__tablename__,
+            ChatSession.__tablename__, ChatMessage.__tablename__,
         ],
     )

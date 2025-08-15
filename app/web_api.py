@@ -11,11 +11,13 @@ from sqlalchemy import func
 
 # Import models
 from .models import (
-    Base, Store, User, Product, ProductItem, Order, OrderItem, 
-    Delivery, Payment, Coupon, Admin, RealName, WalletRecord, Interrogation,
+    Base, get_engine, SessionLocal, SQLDatabase,
+    Store, RawPage, Product, ProductItem, Order, OrderItem, Delivery, Payment, Coupon, Admin, RealName, WalletRecord, Interrogation,
     PageType, AdminLevel, CouponType, DeliveryStatus, ProductStatus, 
     OrderStatus, PaymentStatus, UserLevel, WalletType, OrderLog,
     init_db as models_init_db,
+    ChatSession, ChatMessage,
+    User,
 )
 
 app = Flask(__name__)
@@ -136,7 +138,13 @@ def metrics():
 def index():
     """Frontend homepage - separate from admin backend"""
     products = Product.query.filter_by(status=ProductStatus.NORMAL).limit(8).all()
-    return render_template('index.html', products=products)
+    # Load basic pages for footer linking
+    store_id = session.get('store_id', 1)
+    about = RawPage.query.filter_by(store_id=store_id, type=PageType.ABOUT_US).first()
+    contact = RawPage.query.filter_by(store_id=store_id, type=PageType.CONTACT_US).first()
+    privacy = RawPage.query.filter_by(store_id=store_id, type=PageType.PRIVACY_POLICY).first()
+    terms = RawPage.query.filter_by(store_id=store_id, type=PageType.TERM_SERVICE).first()
+    return render_template('index.html', products=products, about=about, contact=contact, privacy=privacy, terms=terms)
 
 # Remove duplicate /login here; keep admin /login defined earlier
 
@@ -147,10 +155,12 @@ def user_login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '').strip()
         
-        if username == 'user' and password == 'user1234':
-            session['user_id'] = 'user'
+        # Validate against database
+        user = User.query.filter_by(account=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user_id'] = user.id
             session['user_type'] = 'user'
-            session['username'] = 'user'
+            session['username'] = user.name
             flash('登入成功', 'success')
             return redirect(url_for('index'))
         else:
@@ -166,9 +176,10 @@ def user_dashboard():
         flash('權限不足', 'danger')
         return redirect(url_for('index'))
     
-    # Get user's orders
-    user_orders = Order.query.filter_by(user_id=session['user_id']).order_by(Order.created_at.desc()).limit(5).all()
-    return render_template('user/dashboard.html', orders=user_orders)
+    user_id = session['user_id']
+    orders = Order.query.filter_by(user_id=user_id).order_by(Order.created_at.desc()).all()
+    chats = ChatSession.query.filter_by(user_id=user_id).order_by(ChatSession.created_at.desc()).all()
+    return render_template('user/dashboard.html', orders=orders, chats=chats)
 
 @app.route('/chat')
 @login_required
@@ -190,21 +201,35 @@ def api_chat():
     try:
         data = request.get_json()
         message = data.get('message', '').strip()
+        session_id = data.get('session_id')
         
         if not message:
             return jsonify({'error': '訊息不能為空'}), 400
         
-        # Simple AI response simulation
-        # In real implementation, this would call the AI service from main.py
+        # Persist user message
+        if session_id:
+            chat_session = db.session.get(ChatSession, int(session_id))
+        else:
+            chat_session = None
+        if not chat_session:
+            chat_session = ChatSession(store_id=session.get('store_id', 1), user_id=session.get('user_id'), status='ai')
+            db.session.add(chat_session)
+            db.session.flush()
+        db.session.add(ChatMessage(session_id=chat_session.id, sender='user', content=message))
+        
         ai_response = generate_ai_response(message)
+        db.session.add(ChatMessage(session_id=chat_session.id, sender='ai', content=ai_response))
+        db.session.commit()
         
         return jsonify({
             'success': True,
             'response': ai_response,
+            'session_id': chat_session.id,
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
 def generate_ai_response(message):
@@ -236,12 +261,24 @@ def admin_dashboard():
     store_id = session.get('store_id', 1)
     total_products = Product.query.filter_by(store_id=store_id).count()
     total_orders = Order.query.filter_by(store_id=store_id).count()
-    
+    total_users = db.session.query(User).join(Order).filter(Order.store_id == store_id).distinct().count()
+
+    # Monthly revenue (paid orders current month)
+    now = datetime.now()
+    monthly_revenue = db.session.query(func.coalesce(func.sum(Order.total), 0)).filter(
+        Order.store_id == store_id,
+        Order.status == OrderStatus.PAID,
+        func.extract('year', Order.created_at) == now.year,
+        func.extract('month', Order.created_at) == now.month,
+    ).scalar() or 0
+
     recent_orders = Order.query.filter_by(store_id=store_id).order_by(Order.created_at.desc()).limit(5).all()
     
     return render_template('admin/dashboard.html', 
                          total_products=total_products,
                          total_orders=total_orders,
+                         total_users=total_users,
+                         monthly_revenue=monthly_revenue,
                          recent_orders=recent_orders)
 
 # -----------------
@@ -501,7 +538,7 @@ def admin_product_delete(pid):
 @app.route('/admin/products/<int:pid>/items', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_product_items(pid):
-    p = Product.query.get(pid)
+    p = db.session.get(Product, pid)
     if not p:
         flash('商品不存在', 'danger')
         return redirect(url_for('admin_products'))
@@ -634,7 +671,7 @@ def admin_raw_page_new():
         db.session.commit()
         flash('頁面已建立', 'success')
         return redirect(url_for('admin_raw_pages'))
-    return render_template('admin/raw_page_form.html')
+    return render_template('admin/raw_page_form.html', page_types=list(PageType))
 
 @app.route('/admin/raw-pages/<int:rid>/edit', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
@@ -654,7 +691,7 @@ def admin_raw_page_edit(rid):
         flash('頁面已更新', 'success')
         return redirect(url_for('admin_raw_pages'))
     
-    return render_template('admin/raw_page_form.html', page=rp)
+    return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
 
 # -----------------
 # Admin: Customer Service
@@ -664,56 +701,56 @@ def admin_raw_page_edit(rid):
 @admin_required(AdminLevel.STAFF)
 def admin_customer_service():
     store_id = session.get('store_id', 1)
-    # Get chat history from chat_store (simulated for now)
-    # In real implementation, this would connect to AgentBuilder's chat_store
-    # For now, simulate chat records based on store_id
-    chats = []
-    for i in range(10):
-        chat = {
-            'id': i + 1,
-            'user_id': f'user_{i+1}',
-            'username': f'用戶{i+1}',
-            'last_message': f'這是第{i+1}個聊天的最後一條訊息',
-            'status': 'unresolved' if i < 5 else 'resolved',
-            'created_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
-            'store_id': store_id
-        }
-        chats.append(chat)
+    status_filter = request.args.get('status')
     
-    # Sort unresolved chats first
-    chats.sort(key=lambda x: (x['status'] == 'resolved', x['created_at']), reverse=True)
+    query = ChatSession.query.filter_by(store_id=store_id)
+    if status_filter:
+        if status_filter == 'resolved':
+            query = query.filter_by(status='resolved')
+        elif status_filter == 'unresolved':
+            query = query.filter(ChatSession.status != 'resolved')
+    sessions = query.order_by(ChatSession.created_at.desc()).all()
+    
+    chats = []
+    for cs in sessions:
+        last_msg = ChatMessage.query.filter_by(session_id=cs.id).order_by(ChatMessage.created_at.desc()).first()
+        user_name = None
+        if cs.user_id:
+            u = db.session.get(User, cs.user_id)
+            user_name = u.name if u else None
+        chats.append({
+            'id': cs.id,
+            'user_id': cs.user_id,
+            'user_name': user_name or '訪客',
+            'last_message': (last_msg.content if last_msg else ''),
+            'status': cs.status if cs.status != 'resolved' else 'resolved',
+            'created_at': cs.created_at.strftime('%Y-%m-%d %H:%M') if cs.created_at else '',
+            'last_activity': last_msg.created_at.strftime('%Y-%m-%d %H:%M') if last_msg and last_msg.created_at else ''
+        })
     
     return render_template('admin/customer_service.html', chats=chats)
 
 @app.route('/admin/customer-service/<int:chat_id>')
 @admin_required(AdminLevel.STAFF)
 def admin_customer_service_chat(chat_id):
-    # Get specific chat details
+    cs = db.session.get(ChatSession, chat_id)
+    if not cs:
+        flash('聊天不存在', 'danger')
+        return redirect(url_for('admin_customer_service'))
+    user_name = None
+    if cs.user_id:
+        u = db.session.get(User, cs.user_id)
+        user_name = u.name if u else None
+    messages = ChatMessage.query.filter_by(session_id=cs.id).order_by(ChatMessage.created_at.asc()).all()
     chat = {
-        'id': chat_id,
-        'user_id': 'user123',
-        'user_name': '張小明',
+        'id': cs.id,
+        'user_id': cs.user_id,
+        'user_name': user_name or '訪客',
         'messages': [
-            {
-                'id': 1,
-                'sender': 'user',
-                'content': '請問商品什麼時候會到貨？',
-                'timestamp': '2025-08-15 10:30:00'
-            },
-            {
-                'id': 2,
-                'sender': 'ai',
-                'content': '根據您的訂單狀態，商品預計明天會到貨。',
-                'timestamp': '2025-08-15 10:31:00'
-            },
-            {
-                'id': 3,
-                'sender': 'user',
-                'content': '可以幫我追蹤物流嗎？',
-                'timestamp': '2025-08-15 14:20:00'
-            }
+            {'id': m.id, 'sender': m.sender, 'content': m.content, 'timestamp': m.created_at.strftime('%Y-%m-%d %H:%M') if m.created_at else ''}
+            for m in messages
         ],
-        'status': 'unresolved'
+        'status': cs.status
     }
     return render_template('admin/customer_service_chat.html', chat=chat)
 
@@ -721,10 +758,15 @@ def admin_customer_service_chat(chat_id):
 @admin_required(AdminLevel.STAFF)
 def admin_customer_service_resolve(chat_id):
     try:
-        # Mark chat as resolved
-        # In real implementation, this would update the chat_store
-        flash('聊天已標記為已解決', 'success')
+        cs = db.session.get(ChatSession, chat_id)
+        if not cs:
+            flash('聊天不存在', 'danger')
+        else:
+            cs.status = 'resolved'
+            db.session.commit()
+            flash('聊天已標記為已解決', 'success')
     except Exception as e:
+        db.session.rollback()
         flash(f'操作失敗：{e}', 'danger')
     return redirect(url_for('admin_customer_service_chat', chat_id=chat_id))
 
@@ -736,11 +778,17 @@ def admin_customer_service_reply(chat_id):
         if not message:
             flash('回覆內容不能為空', 'warning')
             return redirect(url_for('admin_customer_service_chat', chat_id=chat_id))
-        
-        # Add admin reply to chat
-        # In real implementation, this would update the chat_store
+        cs = db.session.get(ChatSession, chat_id)
+        if not cs:
+            flash('聊天不存在', 'danger')
+            return redirect(url_for('admin_customer_service'))
+        db.session.add(ChatMessage(session_id=cs.id, sender='admin', content=message))
+        if cs.status == 'ai':
+            cs.status = 'human'
+        db.session.commit()
         flash('回覆已發送', 'success')
     except Exception as e:
+        db.session.rollback()
         flash(f'發送失敗：{e}', 'danger')
     return redirect(url_for('admin_customer_service_chat', chat_id=chat_id))
 
@@ -979,6 +1027,35 @@ def api_products():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/products/<int:product_id>')
+def api_product_detail(product_id: int):
+    try:
+        p = db.session.get(Product, product_id)
+        if not p:
+            return jsonify({'error': '商品不存在'}), 404
+        items = ProductItem.query.filter_by(product_id=p.id).all()
+        return jsonify({
+            'id': p.id,
+            'name': p.name,
+            'catalog': p.catalog,
+            'descriptions': p.descriptions,
+            'detail': p.detail,
+            'picture': p.picture,
+            'status': p.status.value,
+            'items': [
+                {
+                    'id': it.id,
+                    'name': it.name,
+                    'price': it.price,
+                    'stock': it.stock,
+                    'status': it.status.value,
+                    'discount': it.discount,
+                } for it in items
+            ]
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/orders/<int:order_id>')
 @login_required
 def api_order_detail(order_id):
@@ -1048,7 +1125,7 @@ def api_get_orders():
             'id': order.id,
             'user_email': order.user.email if order.user else None,
             'total': order.total,
-            'status': order.status.value if isinstance(order.status, OrderStatus) else str(order.status),
+            'status': order.status.value if isinstance(order.status, OrderStatus) else int(order.status),
             'created_at': order.created_at.isoformat() if hasattr(order, 'created_at') and order.created_at else None,
             'order_items': []
         }
@@ -1086,28 +1163,37 @@ def api_stats():
     """Get store statistics"""
     try:
         store_id = session.get('store_id', 1)
-        
         total_products = Product.query.filter_by(store_id=store_id).count()
         total_orders = Order.query.filter_by(store_id=store_id).count()
-        
-        # Monthly orders
-        current_month = datetime.now().month
-        monthly_orders = Order.query.filter_by(store_id=store_id).filter(
-            func.extract('month', Order.created_at) == current_month
+        total_users = db.session.query(User).join(Order).filter(Order.store_id == store_id).distinct().count()
+
+        # Monthly metrics
+        now = datetime.now()
+        monthly_orders = Order.query.filter(
+            Order.store_id == store_id,
+            func.extract('year', Order.created_at) == now.year,
+            func.extract('month', Order.created_at) == now.month,
         ).count()
-        
-        # Revenue calculation
-        orders = Order.query.filter_by(store_id=store_id, status=OrderStatus.PAID).all()
-        total_revenue = sum(order.total for order in orders)
-        
+        monthly_revenue = db.session.query(func.coalesce(func.sum(Order.total), 0)).filter(
+            Order.store_id == store_id,
+            Order.status == OrderStatus.PAID,
+            func.extract('year', Order.created_at) == now.year,
+            func.extract('month', Order.created_at) == now.month,
+        ).scalar() or 0
+
+        # Category stats (count products by catalog)
+        category_counts = db.session.query(Product.catalog, func.count(Product.id)).filter_by(store_id=store_id).group_by(Product.catalog).all()
+        category_stats = [{ 'category': c, 'count': int(n) } for c, n in category_counts]
+
         stats = {
             'total_products': total_products,
             'total_orders': total_orders,
+            'total_users': total_users,
             'monthly_orders': monthly_orders,
-            'total_revenue': total_revenue,
+            'monthly_revenue': int(monthly_revenue),
+            'category_stats': category_stats,
             'store_id': store_id
         }
-        
         return jsonify(stats)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1142,6 +1228,65 @@ def add_to_cart(product_id):
             'quantity': quantity
         })
         
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/chat/session', methods=['POST'])
+@login_required
+def api_chat_new_session():
+    try:
+        store_id = session.get('store_id', 1)
+        cs = ChatSession(store_id=store_id, user_id=session.get('user_id'), status='ai')
+        db.session.add(cs)
+        db.session.commit()
+        return jsonify({'session_id': cs.id})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/about')
+def about_page():
+    store_id = session.get('store_id', 1)
+    page = RawPage.query.filter_by(store_id=store_id, type=PageType.ABOUT_US).first()
+    return render_template('raw_page.html', page=page)
+
+@app.route('/contact')
+def contact_page():
+    store_id = session.get('store_id', 1)
+    page = RawPage.query.filter_by(store_id=store_id, type=PageType.CONTACT_US).first()
+    return render_template('raw_page.html', page=page)
+
+@app.route('/privacy')
+def privacy_page():
+    store_id = session.get('store_id', 1)
+    page = RawPage.query.filter_by(store_id=store_id, type=PageType.PRIVACY_POLICY).first()
+    return render_template('raw_page.html', page=page)
+
+@app.route('/terms')
+def terms_page():
+    store_id = session.get('store_id', 1)
+    page = RawPage.query.filter_by(store_id=store_id, type=PageType.TERM_SERVICE).first()
+    return render_template('raw_page.html', page=page)
+
+@app.route('/api/product-items/bulk', methods=['POST'])
+def api_product_items_bulk():
+    try:
+        data = request.get_json() or {}
+        ids = data.get('ids', [])
+        if not isinstance(ids, list) or not ids:
+            return jsonify({'error': '缺少項目 ID'}), 400
+        items = ProductItem.query.filter(ProductItem.id.in_(ids)).all()
+        result = []
+        for it in items:
+            result.append({
+                'id': it.id,
+                'name': it.name,
+                'price': it.price,
+                'stock': it.stock,
+                'product_id': it.product_id,
+                'product_name': it.product.name if it.product else None
+            })
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
