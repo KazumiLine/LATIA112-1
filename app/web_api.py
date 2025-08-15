@@ -141,6 +141,16 @@ def admin_orders():
     return render_template('admin/orders.html', orders=orders)
 
 # -----------------
+# Admin: Users
+# -----------------
+
+@app.route('/admin/users')
+@admin_required(AdminLevel.MANAGER)
+def admin_users():
+    users = User.query.order_by(User.created_at.desc()).all()
+    return render_template('admin/users.html', users=users)
+
+# -----------------
 # Admin: Product CRUD
 # -----------------
 
@@ -334,6 +344,46 @@ def admin_raw_page_edit(rid):
         flash('頁面已更新', 'success')
         return redirect(url_for('admin_raw_pages'))
     return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
+
+# -----------------
+# Admin: Orders status update (edit)
+# -----------------
+
+@app.route('/admin/orders/<int:order_id>/status', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def admin_order_update_status(order_id):
+    try:
+        order = Order.query.get_or_404(order_id)
+        to_status_val = int(request.form.get('status'))
+        to_status = OrderStatus(to_status_val)
+        from_status = order.status
+        # Validate transitions
+        if from_status == OrderStatus.PENDING and to_status not in [OrderStatus.PAID, OrderStatus.REFUND]:
+            flash('非法狀態轉移：待付款只能改為 已付款 或 退款', 'warning')
+            return redirect(url_for('admin_orders'))
+        if from_status == OrderStatus.PAID and to_status not in [OrderStatus.SHIPPED, OrderStatus.REFUND]:
+            flash('非法狀態轉移：已付款只能改為 已發貨 或 退款', 'warning')
+            return redirect(url_for('admin_orders'))
+        # Sync payment and stock
+        if to_status == OrderStatus.PAID:
+            if order.payment:
+                order.payment.status = PaymentStatus.PAID
+        if to_status == OrderStatus.REFUND:
+            # restock items
+            for oi in order.order_items:
+                if oi.product_item:
+                    oi.product_item.stock += oi.quantity
+            if order.payment:
+                order.payment.status = PaymentStatus.REFUNDED
+        order.status = to_status
+        log = OrderLog(order_id=order.id, action='status_change', from_status=str(from_status.name), to_status=str(to_status.name), note='admin panel update')
+        db.session.add(log)
+        db.session.commit()
+        flash('訂單狀態已更新', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'更新失敗：{e}', 'danger')
+    return redirect(url_for('admin_orders'))
 
 # -----------------
 # APIs with workflow logging and creation
