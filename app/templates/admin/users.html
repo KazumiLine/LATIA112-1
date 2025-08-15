@@ -2,7 +2,19 @@
 {% block title %}管理後台 - 用戶管理{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
-  <h3 class="mb-3"><i class="bi bi-people"></i> 用戶管理</h3>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3><i class="bi bi-people"></i> 用戶管理</h3>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-primary" onclick="exportUsers()">
+        <i class="bi bi-download"></i> 匯出用戶
+      </button>
+      <button class="btn btn-primary" onclick="showModal('addUserModal')">
+        <i class="bi bi-person-plus"></i> 新增用戶
+      </button>
+    </div>
+  </div>
+
+  <!-- Users Table -->
   <div class="card">
     <div class="card-body">
       <div class="table-responsive">
@@ -15,25 +27,277 @@
               <th>Email</th>
               <th>電話</th>
               <th>等級</th>
+              <th>錢包餘額</th>
               <th>建立時間</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
             {% for u in users %}
             <tr>
               <td>#{{ u.id }}</td>
-              <td>{{ u.account }}</td>
+              <td><code>{{ u.account }}</code></td>
               <td>{{ u.name }}</td>
               <td>{{ u.email }}</td>
               <td>{{ u.phone or '—' }}</td>
-              <td>{{ u.level.name if u.level else '—' }}</td>
+              <td>
+                {% if u.level.value == 1 %}
+                  <span class="badge bg-secondary">一般會員</span>
+                {% elif u.level.value == 2 %}
+                  <span class="badge bg-info">銀卡會員</span>
+                {% else %}
+                  <span class="badge bg-warning">金卡會員</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="text-success fw-bold">NT$ {{ "{:,}".format(u.wallet) }}</span>
+              </td>
               <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '—' }}</td>
+              <td>
+                <div class="btn-group" role="group">
+                  <button class="btn btn-sm btn-outline-primary" onclick="editUser({{ u.id }}, '{{ u.account }}', '{{ u.name }}', '{{ u.email }}', '{{ u.phone or '' }}', {{ u.level.value }}, {{ u.wallet }}, {{ u.award }})">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-info" onclick="viewUserDetails({{ u.id }})">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                </div>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+      
+      {% if not users %}
+      <div class="text-center py-5">
+        <i class="bi bi-people text-muted" style="font-size: 3rem;"></i>
+        <p class="text-muted mt-3">尚未有任何用戶</p>
+        <button class="btn btn-primary" onclick="showModal('addUserModal')">
+          <i class="bi bi-person-plus"></i> 新增第一個用戶
+        </button>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
+
+<!-- Add User Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addUserModalLabel">
+          <i class="bi bi-person-plus"></i> 新增用戶
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post" action="{{ url_for('admin_users') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">帳號 *</label>
+              <input type="text" class="form-control" name="account" required placeholder="用戶登入帳號">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">姓名 *</label>
+              <input type="text" class="form-control" name="name" required placeholder="用戶真實姓名">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Email *</label>
+              <input type="email" class="form-control" name="email" required placeholder="user@example.com">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">電話</label>
+              <input type="tel" class="form-control" name="phone" placeholder="09xxxxxxxx">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">會員等級 *</label>
+              <select class="form-select" name="level" required>
+                <option value="1">一般會員</option>
+                <option value="2">銀卡會員</option>
+                <option value="3">金卡會員</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">初始錢包餘額</label>
+              <input type="number" class="form-control" name="wallet" value="0" min="0" step="1">
+            </div>
+            <div class="col-12">
+              <label class="form-label">地址</label>
+              <input type="text" class="form-control" name="address" placeholder="用戶地址">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">新增用戶</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editUserModalLabel">
+          <i class="bi bi-pencil"></i> 編輯用戶
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="editUserForm" method="post">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">帳號</label>
+              <input type="text" class="form-control" id="editUserAccount" readonly>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">姓名 *</label>
+              <input type="text" class="form-control" name="name" id="editUserName" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Email *</label>
+              <input type="email" class="form-control" name="email" id="editUserEmail" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">電話</label>
+              <input type="tel" class="form-control" name="phone" id="editUserPhone">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">會員等級 *</label>
+              <select class="form-select" name="level" id="editUserLevel" required>
+                <option value="1">一般會員</option>
+                <option value="2">銀卡會員</option>
+                <option value="3">金卡會員</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">錢包餘額</label>
+              <input type="number" class="form-control" name="wallet" id="editUserWallet" min="0" step="1">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">獎金餘額</label>
+              <input type="number" class="form-control" name="award" id="editUserAward" min="0" step="1">
+            </div>
+            <div class="col-12">
+              <label class="form-label">地址</label>
+              <input type="text" class="form-control" name="address" id="editUserAddress">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">更新用戶</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- User Details Modal -->
+<div class="modal fade" id="userDetailsModal" tabindex="-1" aria-labelledby="userDetailsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="userDetailsModalLabel">
+          <i class="bi bi-person"></i> 用戶詳情
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="userDetailsContent">
+        <!-- Content will be loaded dynamically -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function editUser(id, account, name, email, phone, level, wallet, award) {
+  document.getElementById('editUserAccount').value = account;
+  document.getElementById('editUserName').value = name;
+  document.getElementById('editUserEmail').value = email;
+  document.getElementById('editUserPhone').value = phone;
+  document.getElementById('editUserLevel').value = level;
+  document.getElementById('editUserWallet').value = wallet;
+  document.getElementById('editUserAward').value = award;
+  
+  const form = document.getElementById('editUserForm');
+  form.action = `/admin/users/${id}/edit`;
+  
+  showModal('editUserModal');
+}
+
+function viewUserDetails(userId) {
+  // Load user details via AJAX
+  fetch(`/admin/users/${userId}/details`)
+    .then(response => response.json())
+    .then(data => {
+      document.getElementById('userDetailsContent').innerHTML = `
+        <div class="row g-3">
+          <div class="col-md-6">
+            <strong>帳號:</strong> ${data.account}
+          </div>
+          <div class="col-md-6">
+            <strong>姓名:</strong> ${data.name}
+          </div>
+          <div class="col-md-6">
+            <strong>Email:</strong> ${data.email}
+          </div>
+          <div class="col-md-6">
+            <strong>電話:</strong> ${data.phone || '—'}
+          </div>
+          <div class="col-md-6">
+            <strong>等級:</strong> ${data.level_name}
+          </div>
+          <div class="col-md-6">
+            <strong>錢包餘額:</strong> NT$ ${data.wallet.toLocaleString()}
+          </div>
+          <div class="col-md-6">
+            <strong>獎金餘額:</strong> NT$ ${data.award.toLocaleString()}
+          </div>
+          <div class="col-md-6">
+            <strong>建立時間:</strong> ${data.created_at}
+          </div>
+          <div class="col-12">
+            <strong>地址:</strong> ${data.address || '—'}
+          </div>
+        </div>
+      `;
+      showModal('userDetailsModal');
+    })
+    .catch(error => {
+      console.error('Error loading user details:', error);
+      showToast('錯誤', '無法載入用戶詳情', 'error');
+    });
+}
+
+function exportUsers() {
+  // Implement user export functionality
+  showToast('資訊', '匯出功能開發中...', 'info');
+}
+
+// Auto-hide modals after form submission
+document.addEventListener('DOMContentLoaded', function() {
+  const forms = document.querySelectorAll('form');
+  forms.forEach(form => {
+    form.addEventListener('submit', function() {
+      setTimeout(() => {
+        const modal = this.closest('.modal');
+        if (modal) {
+          hideModal(modal.id);
+        }
+      }, 1000);
+    });
+  });
+});
+</script>
 {% endblock %}

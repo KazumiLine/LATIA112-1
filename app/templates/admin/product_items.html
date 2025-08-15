@@ -1,25 +1,47 @@
 {% extends "base.html" %}
-{% block title %}商品細項管理{% endblock %}
+{% block title %}管理後台 - 商品細項管理{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
   <div class="d-flex justify-content-between align-items-center mb-3">
-    <h3><i class="bi bi-list-ul"></i> 商品細項 - {{ product.name }}</h3>
-    <a href="{{ url_for('admin_products') }}" class="btn btn-secondary">返回商品</a>
-  </div>
-  <div class="card mb-3">
-    <div class="card-header">新增細項</div>
-    <div class="card-body">
-      <form method="post">
-        <div class="row g-2">
-          <div class="col-md-3"><input class="form-control" name="name" placeholder="名稱" required /></div>
-          <div class="col-md-2"><input class="form-control" type="number" name="price" placeholder="價格" required /></div>
-          <div class="col-md-2"><input class="form-control" type="number" name="stock" placeholder="庫存" required /></div>
-          <div class="col-md-3"><input class="form-control" name="discount" placeholder="折扣描述" /></div>
-          <div class="col-md-2"><button class="btn btn-primary w-100" type="submit">新增</button></div>
-        </div>
-      </form>
+    <h3><i class="bi bi-list-ul"></i> 商品細項管理</h3>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary" onclick="showModal('addItemModal')">
+        <i class="bi bi-plus-circle"></i> 新增細項
+      </button>
+      <a href="{{ url_for('admin_products') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left"></i> 返回商品列表
+      </a>
     </div>
   </div>
+
+  <!-- Product Info Card -->
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="row align-items-center">
+        <div class="col-md-2">
+          {% if product.picture %}
+            <img src="{{ product.picture }}" alt="{{ product.name }}" class="img-fluid rounded" style="max-height: 100px;">
+          {% else %}
+            <div class="bg-light d-flex align-items-center justify-content-center rounded" style="height: 100px;">
+              <i class="bi bi-image text-muted" style="font-size: 2rem;"></i>
+            </div>
+          {% endif %}
+        </div>
+        <div class="col-md-10">
+          <h5 class="card-title mb-1">{{ product.name }}</h5>
+          <p class="card-text text-muted mb-2">
+            <span class="badge bg-secondary">{{ product.catalog }}</span>
+            {% if product.descriptions %}
+              <span class="ms-2">{{ product.descriptions }}</span>
+            {% endif %}
+          </p>
+          <small class="text-muted">商品ID: #{{ product.id }}</small>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Items Table -->
   <div class="card">
     <div class="card-body">
       <div class="table-responsive">
@@ -31,33 +53,198 @@
               <th>價格</th>
               <th>庫存</th>
               <th>折扣</th>
+              <th>狀態</th>
+              <th>建立時間</th>
               <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            {% for it in items %}
+            {% for item in items %}
             <tr>
-              <td>#{{ it.id }}</td>
+              <td>#{{ item.id }}</td>
+              <td>{{ item.name }}</td>
+              <td><span class="text-success fw-bold">NT$ {{ "{:,}".format(item.price) }}</span></td>
               <td>
-                <form method="post" action="{{ url_for('admin_item_edit', item_id=it.id) }}" class="row g-2">
-                  <div class="col-md-3"><input class="form-control" name="name" value="{{ it.name }}" /></div>
-                  <div class="col-md-2"><input class="form-control" type="number" name="price" value="{{ it.price }}" /></div>
-                  <div class="col-md-2"><input class="form-control" type="number" name="stock" value="{{ it.stock }}" /></div>
-                  <div class="col-md-3"><input class="form-control" name="discount" value="{{ it.discount }}" /></div>
-                  <div class="col-md-2 d-flex gap-1">
-                    <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-save"></i></button>
-                </form>
-                    <form method="post" action="{{ url_for('admin_item_delete', item_id=it.id) }}" onsubmit="return confirm('確定刪除？')">
-                      <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
-                    </form>
-                  </div>
+                <span class="badge {% if item.stock > 10 %}bg-success{% elif item.stock > 0 %}bg-warning{% else %}bg-danger{% endif %}">
+                  {{ item.stock }}
+                </span>
+              </td>
+              <td>{{ item.discount or '無' }}</td>
+              <td>
+                {% if item.status.value == 1 %}
+                  <span class="badge bg-success">正常</span>
+                {% else %}
+                  <span class="badge bg-warning">隱藏</span>
+                {% endif %}
+              </td>
+              <td>{{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '—' }}</td>
+              <td>
+                <div class="btn-group" role="group">
+                  <button class="btn btn-sm btn-outline-primary" onclick="editItem({{ item.id }}, '{{ item.name }}', {{ item.price }}, {{ item.stock }}, '{{ item.discount or '' }}')">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="deleteItem({{ item.id }}, '{{ item.name }}')">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
               </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+      
+      {% if not items %}
+      <div class="text-center py-5">
+        <i class="bi bi-inbox text-muted" style="font-size: 3rem;"></i>
+        <p class="text-muted mt-3">此商品尚未建立細項</p>
+        <button class="btn btn-primary" onclick="showModal('addItemModal')">
+          <i class="bi bi-plus-circle"></i> 新增第一個細項
+        </button>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>
+
+<!-- Add Item Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1" aria-labelledby="addItemModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="addItemModalLabel">
+          <i class="bi bi-plus-circle"></i> 新增商品細項
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">細項名稱 *</label>
+              <input type="text" class="form-control" name="name" required placeholder="例如：標準版、加強版、豪華版">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">價格 (NT$) *</label>
+              <input type="number" class="form-control" name="price" required min="0" step="1">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">庫存數量 *</label>
+              <input type="number" class="form-control" name="stock" required min="0" step="1">
+            </div>
+            <div class="col-12">
+              <label class="form-label">折扣說明</label>
+              <input type="text" class="form-control" name="discount" placeholder="例如：滿千折百、第二件5折">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">新增細項</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Item Modal -->
+<div class="modal fade" id="editItemModal" tabindex="-1" aria-labelledby="editItemModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editItemModalLabel">
+          <i class="bi bi-pencil"></i> 編輯商品細項
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form id="editItemForm" method="post">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">細項名稱 *</label>
+              <input type="text" class="form-control" name="name" id="editItemName" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">價格 (NT$) *</label>
+              <input type="number" class="form-control" name="price" id="editItemPrice" required min="0" step="1">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">庫存數量 *</label>
+              <input type="number" class="form-control" name="stock" id="editItemStock" required min="0" step="1">
+            </div>
+            <div class="col-12">
+              <label class="form-label">折扣說明</label>
+              <input type="text" class="form-control" name="discount" id="editItemDiscount" placeholder="例如：滿千折百、第二件5折">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button type="submit" class="btn btn-primary">更新細項</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Item Modal -->
+<div class="modal fade" id="deleteItemModal" tabindex="-1" aria-labelledby="deleteItemModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="deleteItemModalLabel">
+          <i class="bi bi-exclamation-triangle text-warning"></i> 確認刪除
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>確定要刪除細項 <strong id="deleteItemName"></strong> 嗎？</p>
+        <p class="text-muted small">此操作無法復原，請謹慎操作。</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <form id="deleteItemForm" method="post" style="display: inline;">
+          <button type="submit" class="btn btn-danger">確認刪除</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function editItem(id, name, price, stock, discount) {
+  document.getElementById('editItemName').value = name;
+  document.getElementById('editItemPrice').value = price;
+  document.getElementById('editItemStock').value = stock;
+  document.getElementById('editItemDiscount').value = discount;
+  
+  const form = document.getElementById('editItemForm');
+  form.action = `/admin/items/${id}/edit`;
+  
+  showModal('editItemModal');
+}
+
+function deleteItem(id, name) {
+  document.getElementById('deleteItemName').textContent = name;
+  document.getElementById('deleteItemForm').action = `/admin/items/${id}/delete`;
+  showModal('deleteItemModal');
+}
+
+// Auto-hide modals after form submission
+document.addEventListener('DOMContentLoaded', function() {
+  const forms = document.querySelectorAll('form');
+  forms.forEach(form => {
+    form.addEventListener('submit', function() {
+      setTimeout(() => {
+        const modal = this.closest('.modal');
+        if (modal) {
+          hideModal(modal.id);
+        }
+      }, 1000);
+    });
+  });
+});
+</script>
 {% endblock %}
