@@ -14,6 +14,7 @@
               <th>金額</th>
               <th>狀態</th>
               <th>建立時間</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -34,6 +35,17 @@
                 {% endif %}
               </td>
               <td>{{ o.created_at.strftime('%Y-%m-%d %H:%M') if o.created_at else '—' }}</td>
+              <td>
+                <form method="post" action="{{ url_for('admin_order_update_status', order_id=o.id) }}" class="d-flex gap-2 align-items-center">
+                  <select class="form-select form-select-sm" name="status" style="width: 150px;">
+                    <option value="1" {% if o.status.value == 1 %}selected{% endif %}>待付款</option>
+                    <option value="2" {% if o.status.value == 2 %}selected{% endif %}>已付款</option>
+                    <option value="3" {% if o.status.value == 3 %}selected{% endif %}>已發貨</option>
+                    <option value="4" {% if o.status.value == 4 %}selected{% endif %}>退款</option>
+                  </select>
+                  <button class="btn btn-sm btn-outline-primary" type="submit"><i class="bi bi-save"></i></button>
+                </form>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
