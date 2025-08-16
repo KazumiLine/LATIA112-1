@@ -126,7 +126,43 @@
             left: 0;
             z-index: 1000;
             width: 250px;
-            transition: transform 0.3s ease;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+        
+        /* 手機版：預設隱藏，滑動或點擊顯示 */
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                width: 280px;
+                max-width: 85vw;
+                z-index: 1055;
+                top: 0;
+                height: 100vh;
+                margin-top: 0;
+                box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            }
+            
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            
+            .sidebar.show::before {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: -1;
+                opacity: 0;
+                animation: fadeIn 0.3s ease forwards;
+            }
+        }
+        
+        @keyframes fadeIn {
+            to { opacity: 1; }
         }
         
         .sidebar .nav-link {
@@ -155,9 +191,24 @@
             margin-left: 250px;
             margin-top: 60px;
             padding: 20px;
-            transition: margin-left 0.3s ease;
-            max-width: calc(100vw - 250px);
+            transition: all 0.3s ease;
+            width: calc(100vw - 250px);
             overflow-x: hidden;
+            position: relative;
+        }
+        
+        /* 手機版 main-content */
+        @media (max-width: 768px) {
+            .main-content {
+                background-color: var(--light-color);
+                min-height: calc(100vh - 56px);
+                margin-left: 0;
+                margin-top: 56px;
+                padding: 15px;
+                width: 100%;
+                overflow-x: hidden;
+                position: relative;
+            }
         }
         
         .stats-card {
@@ -273,25 +324,23 @@ LOBODY>
             opacity: 0;
         }
 
-        /* RWD Support */
+        /* 手機版一般頁面的頂部間距 */
         @media (max-width: 768px) {
-            .sidebar {
-                transform: translateX(-100%);
-                width: 280px;
-                max-width: 85vw;
+            body > .container, 
+            body > .container-fluid,
+            main:not(.main-content) {
+                margin-top: 56px !important;
+                padding-top: 15px;
             }
             
-            .sidebar.show {
-                transform: translateX(0);
-            }
-            
-            .main-content {
-                margin-left: 0;
-                padding: 15px;
+            .navbar {
+                z-index: 1050; /* Lower than sidebar but higher than content */
+                height: 56px; /* Fixed height for mobile */
             }
             
             .navbar-brand {
-                font-size: 1.2rem;
+                font-size: 1.1rem;
+                margin-right: auto;
             }
             
             .card {
@@ -299,23 +348,99 @@ LOBODY>
             }
             
             .stats-card .stats-number {
-                font-size: 2rem;
+                font-size: 1.8rem;
             }
 
             /* Mobile navbar adjustments */
             .navbar-toggler {
-                order: -1;
-                margin-right: 0;
+                order: 0;
+                margin-left: 0;
+                margin-right: 10px;
+                border: none;
+                padding: 0.25rem 0.5rem;
+                font-size: 1.1rem;
+            }
+            
+            .navbar-toggler:focus {
+                box-shadow: none;
             }
 
             .navbar-nav {
-                flex-direction: row;
-                align-items: center;
+                flex-direction: column;
+                align-items: stretch;
+                background: var(--navbar-bg, #0d6efd);
+                margin: 0;
+                padding: 0;
             }
 
             .navbar-nav .nav-link {
-                padding: 0.5rem 0.75rem;
+                padding: 0.75rem 1rem;
                 font-size: 0.9rem;
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+                color: rgba(255,255,255,0.85);
+            }
+            
+            .navbar-nav .nav-link:hover {
+                background-color: rgba(255,255,255,0.1);
+                color: white;
+            }
+            
+            /* Mobile sidebar overlay */
+            .sidebar.show::before {
+                content: '';
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: -1;
+            }
+            
+            /* Ensure tables are responsive on mobile */
+            .table-responsive {
+                font-size: 0.875rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+            }
+            
+            .table th, .table td {
+                padding: 0.5rem 0.25rem;
+                font-size: 0.8rem;
+            }
+            
+            /* Button groups on mobile */
+            .btn-group {
+                flex-wrap: wrap;
+                gap: 2px;
+            }
+            
+            .btn-sm {
+                font-size: 0.75rem;
+                padding: 0.25rem 0.5rem;
+            }
+            
+            /* Hide theme switcher on small screens */
+            .theme-switcher {
+                display: none;
+            }
+            
+            /* Mobile specific container adjustments */
+            .container-fluid {
+                padding-left: 0;
+                padding-right: 0;
+            }
+            
+            /* Sidebar navigation improvements */
+            .sidebar .nav-link {
+                font-size: 0.9rem;
+                padding: 0.75rem 1rem;
+            }
+            
+            .sidebar .nav-link i {
+                width: 20px;
+                text-align: center;
+                margin-right: 8px;
             }
         }
 
@@ -348,7 +473,7 @@ LOBODY>
 
         .theme-switcher .toggle-btn {
             position: absolute;
-            right: 8px; /* anchor to right edge */
+            left: 8px; /* anchor to left edge */
             top: 50%;
             transform: translateY(-50%);
             background: var(--primary-color);
@@ -372,6 +497,7 @@ LOBODY>
         .theme-switcher .theme-buttons {
             display: flex;
             transition: opacity 0.3s ease;
+            margin-left: 40px; /* Add margin to account for left-positioned toggle button */
         }
 
         .theme-switcher.collapsed .theme-buttons {
@@ -413,12 +539,22 @@ LOBODY>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top">
         <div class="container-fluid">
+            {% set is_admin = (request.endpoint and 'admin' in request.endpoint) %}
+            
             <a class="navbar-brand" href="/">
                 <i class="bi bi-shop"></i> 智能電商平台
             </a>
+            {% if is_admin %}
+            <!-- Sidebar toggle for admin pages -->
+            <button class="navbar-toggler" type="button" id="sidebarToggleMobile" title="切換側邊欄">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            {% else %}
+            <!-- Normal navbar toggle for non-admin pages -->
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
+            {% endif %}
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
@@ -450,7 +586,7 @@ LOBODY>
     <!-- Theme Switcher -->
     <div class="theme-switcher" id="themeSwitcher">
         <button class="toggle-btn" onclick="toggleThemeSwitcher()" title="切換主題選擇器">
-            <i class="bi bi-palette"></i>
+            <i class="bi bi-chevron-left" id="toggleIcon"></i>
         </button>
         <div class="theme-buttons">
             <button class="btn btn-outline-primary btn-sm" onclick="setTheme('modern')" data-theme="modern">現代</button>
@@ -465,55 +601,55 @@ LOBODY>
             {% set is_admin = (request.endpoint and 'admin' in request.endpoint) %}
             {% if is_admin %}
             <!-- Sidebar for Admin Pages -->
-            <nav class="col-12 sidebar" id="sidebar">
+            <nav class="sidebar" id="sidebar">
                 <div class="pt-3">
                     <ul class="nav flex-column">
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint == 'admin_dashboard' %}active{% endif %}" href="/admin">
                                 <i class="bi bi-speedometer2"></i>
-                                儀表板
+                                <span>儀表板</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint == 'admin_products' %}active{% endif %}" href="/admin/products">
                                 <i class="bi bi-box"></i>
-                                商品管理
+                                <span>商品管理</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint == 'admin_orders' %}active{% endif %}" href="/admin/orders">
                                 <i class="bi bi-cart"></i>
-                                訂單管理
+                                <span>訂單管理</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint == 'admin_users' %}active{% endif %}" href="/admin/users">
                                 <i class="bi bi-people"></i>
-                                用戶管理
+                                <span>用戶管理</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint in ['admin_coupons', 'admin_coupons_edit'] %}active{% endif %}" href="/admin/coupons">
                                 <i class="bi bi-ticket-detailed"></i>
-                                優惠券
+                                <span>優惠券</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint in ['admin_raw_pages','admin_raw_page_new','admin_raw_page_edit'] %}active{% endif %}" href="/admin/raw-pages">
                                 <i class="bi bi-file-earmark-text"></i>
-                                頁面管理
+                                <span>頁面管理</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint in ['admin_customer_service', 'admin_customer_service_chat'] %}active{% endif %}" href="/admin/customer-service">
                                 <i class="bi bi-chat-dots"></i>
-                                客服管理
+                                <span>客服管理</span>
                             </a>
                         </li>
                         <li class="nav-item">
                             <a class="nav-link" href="/api/stats">
                                 <i class="bi bi-graph-up"></i>
-                                API 統計
+                                <span>API 統計</span>
                             </a>
                         </li>
                     </ul>
@@ -570,7 +706,16 @@ LOBODY>
 
         function toggleThemeSwitcher() {
             const switcher = document.getElementById('themeSwitcher');
+            const icon = document.getElementById('toggleIcon');
             switcher.classList.toggle('collapsed');
+            
+            // Update icon based on state
+            if (switcher.classList.contains('collapsed')) {
+                icon.className = 'bi bi-chevron-right';
+            } else {
+                icon.className = 'bi bi-chevron-left';
+            }
+            
             localStorage.setItem('theme-switcher-collapsed', switcher.classList.contains('collapsed'));
         }
 
@@ -581,17 +726,53 @@ LOBODY>
             
             // Load theme switcher collapsed state
             const isCollapsed = localStorage.getItem('theme-switcher-collapsed') === 'true';
+            const switcher = document.getElementById('themeSwitcher');
+            const icon = document.getElementById('toggleIcon');
             if (isCollapsed) {
-                document.getElementById('themeSwitcher').classList.add('collapsed');
+                switcher.classList.add('collapsed');
+                icon.className = 'bi bi-chevron-right';
+            } else {
+                icon.className = 'bi bi-chevron-left';
             }
             
-            // Mobile sidebar toggle
-            const navbarToggler = document.querySelector('.navbar-toggler');
+            // Mobile sidebar toggle (for admin pages)
+            const sidebarToggleMobile = document.getElementById('sidebarToggleMobile');
             const sidebar = document.getElementById('sidebar');
+            const navbarCollapse = document.getElementById('navbarNav');
             
-            if (navbarToggler && sidebar) {
-                navbarToggler.addEventListener('click', function() {
+            if (sidebarToggleMobile && sidebar) {
+                // Mobile sidebar toggle
+                sidebarToggleMobile.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     sidebar.classList.toggle('show');
+                });
+                
+                // Close sidebar when clicking outside on mobile
+                document.addEventListener('click', function(event) {
+                    if (window.innerWidth <= 768 && 
+                        sidebar.classList.contains('show') && 
+                        !sidebar.contains(event.target) && 
+                        !sidebarToggleMobile.contains(event.target)) {
+                        sidebar.classList.remove('show');
+                    }
+                });
+                
+                // Close sidebar when clicking on nav links on mobile
+                const sidebarLinks = sidebar.querySelectorAll('.nav-link');
+                sidebarLinks.forEach(link => {
+                    link.addEventListener('click', function() {
+                        if (window.innerWidth <= 768) {
+                            sidebar.classList.remove('show');
+                        }
+                    });
+                });
+                
+                // Handle window resize
+                window.addEventListener('resize', function() {
+                    if (window.innerWidth > 768) {
+                        sidebar.classList.remove('show');
+                    }
                 });
             }
         });

@@ -37,10 +37,73 @@
             <label class="form-label">詳細說明</label>
             <textarea class="form-control" name="detail" rows="4" placeholder="商品詳細規格、材質、保固等...">{{ product.detail if product }}</textarea>
           </div>
+          <!-- 主圖片區域 -->
           <div class="col-12">
-            <label class="form-label">圖片URL</label>
-            <input class="form-control" name="picture" value="{{ product.picture if product }}" placeholder="https://example.com/image.jpg" />
-            <div class="form-text">支援 JPG、PNG、GIF 等格式</div>
+            <label class="form-label">主圖片</label>
+            <div class="row g-3">
+              <div class="col-md-8">
+                <div class="input-group">
+                  <input class="form-control" id="pictureInput" name="picture" value="{{ product.picture if product }}" placeholder="https://example.com/image.jpg" />
+                  <button class="btn btn-outline-secondary" type="button" id="uploadPictureBtn">
+                    <i class="bi bi-upload"></i> 上傳圖片
+                  </button>
+                </div>
+                <input type="file" id="pictureFileInput" accept="image/*" style="display: none;">
+                <div class="form-text">支援 JPG、PNG、GIF、WebP 等格式，最大 16MB</div>
+              </div>
+              <div class="col-md-4">
+                <div id="picturePreview" class="border rounded d-flex align-items-center justify-content-center" style="height: 100px; background-color: #f8f9fa;">
+                  {% if product and product.picture %}
+                    <img src="{{ product.picture }}" alt="預覽" class="img-fluid rounded" style="max-height: 100%; max-width: 100%;">
+                  {% else %}
+                    <span class="text-muted">
+                      <i class="bi bi-image" style="font-size: 2rem;"></i><br>
+                      <small>圖片預覽</small>
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 輪播圖區域 -->
+          <div class="col-12">
+            <label class="form-label">輪播圖片 <span class="text-muted">(可選)</span></label>
+            <div class="row g-3">
+              <div class="col-md-8">
+                <div class="input-group">
+                  <textarea class="form-control" id="carouselInput" name="carousel" rows="3" placeholder="輪播圖片URL，每行一個">{{ product.carousel if product }}</textarea>
+                  <button class="btn btn-outline-secondary" type="button" id="uploadCarouselBtn">
+                    <i class="bi bi-upload"></i> 上傳輪播圖
+                  </button>
+                </div>
+                <input type="file" id="carouselFileInput" accept="image/*" multiple style="display: none;">
+                <div class="form-text">可上傳多張圖片作為輪播圖，每個URL一行</div>
+              </div>
+              <div class="col-md-4">
+                <div id="carouselPreview" class="border rounded p-2" style="height: 120px; overflow-y: auto; background-color: #f8f9fa;">
+                  <div class="d-flex flex-column gap-1" id="carouselImages">
+                    {% if product and product.carousel %}
+                      {% for img_url in product.carousel.split('\n') if img_url.strip() %}
+                        <img src="{{ img_url.strip() }}" alt="輪播預覽" class="img-fluid rounded" style="height: 40px; object-fit: cover;">
+                      {% endfor %}
+                    {% else %}
+                      <span class="text-muted text-center">
+                        <i class="bi bi-images"></i><br>
+                        <small>輪播圖預覽</small>
+                      </span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">狀態</label>
+            <select name="status" class="form-select">
+              <option value="1" {% if not product or product.status.value == 1 %}selected{% endif %}>正常</option>
+              <option value="2" {% if product and product.status.value == 2 %}selected{% endif %}>隱藏</option>
+            </select>
           </div>
         </div>
         <div class="mt-4 d-flex gap-2">
@@ -55,4 +118,169 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // 主圖片上傳
+    const uploadPictureBtn = document.getElementById('uploadPictureBtn');
+    const pictureFileInput = document.getElementById('pictureFileInput');
+    const pictureInput = document.getElementById('pictureInput');
+    const picturePreview = document.getElementById('picturePreview');
+    
+    uploadPictureBtn.addEventListener('click', function() {
+        pictureFileInput.click();
+    });
+    
+    pictureFileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            uploadImage(file, function(url) {
+                pictureInput.value = url;
+                updatePicturePreview(url);
+            });
+        }
+    });
+    
+    // 當手動輸入URL時更新預覽
+    pictureInput.addEventListener('input', function() {
+        updatePicturePreview(this.value);
+    });
+    
+    // 輪播圖上傳
+    const uploadCarouselBtn = document.getElementById('uploadCarouselBtn');
+    const carouselFileInput = document.getElementById('carouselFileInput');
+    const carouselInput = document.getElementById('carouselInput');
+    
+    uploadCarouselBtn.addEventListener('click', function() {
+        carouselFileInput.click();
+    });
+    
+    carouselFileInput.addEventListener('change', function(e) {
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            uploadMultipleImages(files, function(urls) {
+                const currentUrls = carouselInput.value.trim();
+                const newUrls = currentUrls ? currentUrls + '\n' + urls.join('\n') : urls.join('\n');
+                carouselInput.value = newUrls;
+                updateCarouselPreview(newUrls);
+            });
+        }
+    });
+    
+    // 當手動輸入輪播圖URL時更新預覽
+    carouselInput.addEventListener('input', function() {
+        updateCarouselPreview(this.value);
+    });
+    
+    // 圖片上傳函數
+    function uploadImage(file, callback) {
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // 顯示上傳進度
+        showUploadProgress();
+        
+        fetch('/api/upload/image', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideUploadProgress();
+            if (data.error) {
+                showToast('錯誤', data.error, 'error');
+            } else {
+                showToast('成功', data.message, 'success');
+                callback(data.url);
+            }
+        })
+        .catch(error => {
+            hideUploadProgress();
+            showToast('錯誤', '上傳失敗', 'error');
+        });
+    }
+    
+    // 多圖片上傳函數
+    function uploadMultipleImages(files, callback) {
+        const urls = [];
+        let completed = 0;
+        
+        showUploadProgress();
+        
+        files.forEach(file => {
+            uploadImage(file, function(url) {
+                urls.push(url);
+                completed++;
+                if (completed === files.length) {
+                    hideUploadProgress();
+                    callback(urls);
+                }
+            });
+        });
+    }
+    
+    // 更新主圖片預覽
+    function updatePicturePreview(url) {
+        if (url.trim()) {
+            picturePreview.innerHTML = `<img src="${url}" alt="預覽" class="img-fluid rounded" style="max-height: 100%; max-width: 100%;" onerror="this.parentElement.innerHTML='<span class=\\"text-danger\\"><i class=\\"bi bi-exclamation-triangle\\"></i><br><small>圖片載入失敗</small></span>'">`;
+        } else {
+            picturePreview.innerHTML = `
+                <span class="text-muted">
+                    <i class="bi bi-image" style="font-size: 2rem;"></i><br>
+                    <small>圖片預覽</small>
+                </span>
+            `;
+        }
+    }
+    
+    // 更新輪播圖預覽
+    function updateCarouselPreview(urls) {
+        const carouselImages = document.getElementById('carouselImages');
+        if (urls.trim()) {
+            const urlList = urls.split('\n').filter(url => url.trim());
+            if (urlList.length > 0) {
+                carouselImages.innerHTML = urlList.map(url => 
+                    `<img src="${url.trim()}" alt="輪播預覽" class="img-fluid rounded" style="height: 40px; object-fit: cover;" onerror="this.style.display='none'">`
+                ).join('');
+            } else {
+                showEmptyCarouselPreview();
+            }
+        } else {
+            showEmptyCarouselPreview();
+        }
+    }
+    
+    function showEmptyCarouselPreview() {
+        document.getElementById('carouselImages').innerHTML = `
+            <span class="text-muted text-center">
+                <i class="bi bi-images"></i><br>
+                <small>輪播圖預覽</small>
+            </span>
+        `;
+    }
+    
+    // 上傳進度顯示
+    function showUploadProgress() {
+        // 可以添加loading spinner
+        document.body.style.cursor = 'wait';
+    }
+    
+    function hideUploadProgress() {
+        document.body.style.cursor = 'default';
+    }
+    
+    // Toast 通知函數（如果還沒有的話）
+    function showToast(title, message, type) {
+        // 如果頁面已經有 showToast 函數，會使用現有的
+        if (typeof window.showToast === 'function') {
+            window.showToast(title, message, type);
+        } else {
+            // 簡單的 alert 備選方案
+            alert(title + ': ' + message);
+        }
+    }
+});
+</script>
 {% endblock %}

@@ -5,9 +5,9 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3><i class="bi bi-people"></i> 用戶管理</h3>
     <div class="d-flex gap-2">
-      <button class="btn btn-outline-primary" onclick="exportUsers()">
-        <i class="bi bi-download"></i> 匯出用戶
-      </button>
+      <a href="{{ url_for('export_users') }}" class="btn btn-outline-success">
+        <i class="bi bi-download"></i> 匯出CSV
+      </a>
       <button class="btn btn-primary" onclick="showModal('addUserModal')">
         <i class="bi bi-person-plus"></i> 新增用戶
       </button>
@@ -106,6 +106,10 @@
             <div class="col-md-6">
               <label class="form-label">Email *</label>
               <input type="email" class="form-control" name="email" required placeholder="user@example.com">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">密碼 *</label>
+              <input type="password" class="form-control" name="password" required placeholder="用戶登入密碼">
             </div>
             <div class="col-md-6">
               <label class="form-label">電話</label>
@@ -280,10 +284,7 @@ function viewUserDetails(userId) {
     });
 }
 
-function exportUsers() {
-  // Implement user export functionality
-  showToast('資訊', '匯出功能開發中...', 'info');
-}
+
 
 // Auto-hide modals after form submission
 document.addEventListener('DOMContentLoaded', function() {

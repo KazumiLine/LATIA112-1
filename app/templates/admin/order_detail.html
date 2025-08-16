@@ -171,7 +171,7 @@
           <h5 class="mb-0"><i class="bi bi-gear"></i> 訂單操作</h5>
         </div>
         <div class="card-body">
-          <form method="post" action="{{ url_for('admin_order_update_status', order_id=order.id) }}">
+          <form method="post" action="{{ url_for('admin_order_status_update', order_id=order.id) }}">
             <div class="mb-3">
               <label class="form-label fw-bold">更新狀態</label>
               <select class="form-select" name="status" required>

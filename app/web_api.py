@@ -1,13 +1,20 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, Response, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 from datetime import datetime, date
 import json
 import os
+import csv
+import io
+import uuid
 from typing import List, Dict, Any
 from functools import wraps
 from sqlalchemy import func
+import concurrent.futures
+import threading
+import asyncio
 
 # Import models
 from .models import (
@@ -19,6 +26,7 @@ from .models import (
     ChatSession, ChatMessage,
     User,
 )
+from .agent import AgentBuilder
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
@@ -26,8 +34,19 @@ DB_PATH = os.environ.get("APP_DB_PATH", os.path.join(os.getcwd(), "storage", "ap
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{DB_PATH}")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
+# 圖片上傳配置
+UPLOAD_FOLDER = os.path.join(os.getcwd(), "storage", "uploads")
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# 確保上傳目錄存在
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 db = SQLAlchemy(app)
 CORS(app)
+
+agent = AgentBuilder(1, 1)
 
 # Provide an init function for run.py
 
@@ -217,7 +236,8 @@ def api_chat():
             db.session.flush()
         db.session.add(ChatMessage(session_id=chat_session.id, sender='user', content=message))
         
-        ai_response = generate_ai_response(message)
+        # 使用同步方式調用 AI 響應生成
+        ai_response = generate_ai_response(chat_session, message)
         db.session.add(ChatMessage(session_id=chat_session.id, sender='ai', content=ai_response))
         db.session.commit()
         
@@ -232,24 +252,53 @@ def api_chat():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-def generate_ai_response(message):
-    """Generate AI response based on user message"""
-    message_lower = message.lower()
-    
-    if '你好' in message or 'hello' in message_lower:
-        return '您好！我是智能客服助手，很高興為您服務。請問有什麼可以幫助您的嗎？'
-    elif '商品' in message or '產品' in message:
-        return '我們有各種優質商品，包括電子產品、居家用品、戶外裝備等。您可以在首頁瀏覽所有商品，或告訴我您感興趣的類別。'
-    elif '訂單' in message or '購買' in message:
-        return '您可以在用戶儀表板查看您的訂單狀態。如需協助，請提供訂單編號，我會為您查詢。'
-    elif '退貨' in message or '退款' in message:
-        return '退貨政策：商品收到後7天內，如發現商品有瑕疵或不符合描述，可申請退貨。請聯繫客服處理。'
-    elif '運費' in message or '配送' in message:
-        return '我們提供多種配送方式：宅配、自取、快遞、郵寄。運費根據配送方式和地區計算，通常在結帳時會顯示。'
-    elif '無法解決' in message or '真人' in message:
-        return '如果無法解決您的問題，請等待真人客服回覆。我們會盡快為您處理。'
-    else:
-        return '感謝您的詢問。如果我的回答無法解決您的問題，請等待真人客服回覆，或嘗試重新描述您的問題。'
+# 創建線程池用於處理 AI 請求
+executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+async def generate_ai_response_async(chat_session, message):
+    """異步版本的 AI 響應生成"""
+    try:
+        # 更新代理信息並生成響應
+        await agent.update_info(chat_session.store_id, chat_session.user_id)
+        response = await agent.chat(message)
+        return response
+    except Exception as e:
+        # 如果 AI 代理出錯，返回一個友好的錯誤消息
+        return f"抱歉，AI 服務暫時無法使用。錯誤信息：{str(e)}"
+
+def generate_ai_response(chat_session, message):
+    """在同步環境中運行異步 AI 響應生成"""
+    try:
+        # 創建新的事件循環或使用現有的
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        # 如果循環正在運行，使用 asyncio.create_task
+        if loop.is_running():
+            # 在新線程中運行異步函數
+            def run_async():
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                try:
+                    return new_loop.run_until_complete(generate_ai_response_async(chat_session, message))
+                finally:
+                    new_loop.close()
+            
+            future = executor.submit(run_async)
+            response = future.result(timeout=30)
+            return response
+        else:
+            # 直接運行異步函數
+            response = loop.run_until_complete(generate_ai_response_async(chat_session, message))
+            return response
+            
+    except concurrent.futures.TimeoutError:
+        return "抱歉，AI 響應時間過長，請稍後再試。"
+    except Exception as e:
+        return f"抱歉，AI 服務出現錯誤：{str(e)}"
 
 # -----------------
 # Admin Routes (Protected)
@@ -309,41 +358,67 @@ def admin_order_status_update(order_id):
     store_id = session.get('store_id', 1)
     order = db.session.get(Order, order_id)
     if not order or order.store_id != store_id:
-        return jsonify({'error': '訂單不存在'}), 404
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': '訂單不存在'}), 404
+        else:
+            flash('訂單不存在', 'danger')
+            return redirect(url_for('admin_orders'))
     
     try:
         new_status = OrderStatus(int(request.form.get('status')))
-        order.status = new_status
+        old_status = order.status
         
         # Add order log
         log = OrderLog(
             order_id=order_id,
             action='status_update',
-            from_status=order.status.name,
-            to_status=new_status.name,
+            from_status=old_status.name if hasattr(old_status, 'name') else str(old_status),
+            to_status=new_status.name if hasattr(new_status, 'name') else str(new_status),
             note=request.form.get('note', '')
         )
         db.session.add(log)
         
+        # Update status after logging
+        order.status = new_status
+        
         db.session.commit()
-        return jsonify({'message': '訂單狀態已更新'})
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '訂單狀態已更新'})
+        else:
+            flash('訂單狀態已更新', 'success')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
+            
     except Exception as e:
-        return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        else:
+            flash(f'更新失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
 
 @app.route('/admin/orders/<int:order_id>/delivery', methods=['POST'])
 @admin_required(AdminLevel.STAFF)
 def admin_order_update_delivery(order_id):
     store_id = session.get('store_id', 1)
-    order = Order.query.filter_by(id=order_id, store_id=store_id).first()
+    # 使用統一的數據庫會話
+    order = db.session.query(Order).filter_by(id=order_id, store_id=store_id).first()
     if not order:
-        return jsonify({'error': '訂單不存在'}), 404
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': '訂單不存在'}), 404
+        else:
+            flash('訂單不存在', 'danger')
+            return redirect(url_for('admin_orders'))
     
     try:
         # Create or update delivery info
         delivery = order.delivery
         if not delivery:
-            delivery = Delivery(order_id=order_id)
+            delivery = Delivery()
             db.session.add(delivery)
+            db.session.flush()  # To get delivery.id
+            order.delivery_id = delivery.id
         
         delivery.destination = request.form.get('destination')
         delivery.method = request.form.get('method')
@@ -351,32 +426,63 @@ def admin_order_update_delivery(order_id):
         delivery.remark = request.form.get('remark')
         
         db.session.commit()
-        return jsonify({'message': '配送資訊已更新'})
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '配送資訊已更新'})
+        else:
+            flash('配送資訊已更新', 'success')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
+            
     except Exception as e:
-        return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        else:
+            flash(f'更新失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
 
 @app.route('/admin/orders/<int:order_id>/payment', methods=['POST'])
 @admin_required(AdminLevel.STAFF)
 def admin_order_update_payment(order_id):
     store_id = session.get('store_id', 1)
-    order = Order.query.filter_by(id=order_id, store_id=store_id).first()
+    # 使用統一的數據庫會話
+    order = db.session.query(Order).filter_by(id=order_id, store_id=store_id).first()
     if not order:
-        return jsonify({'error': '訂單不存在'}), 404
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': '訂單不存在'}), 404
+        else:
+            flash('訂單不存在', 'danger')
+            return redirect(url_for('admin_orders'))
     
     try:
         # Create or update payment info
         payment = order.payment
         if not payment:
-            payment = Payment(order_id=order_id)
+            payment = Payment(amount=order.total)  # Use order total as payment amount
             db.session.add(payment)
+            db.session.flush()  # To get payment.id
+            order.payment_id = payment.id
         
-        payment.method = request.form.get('method')
+        payment.payment_method = request.form.get('method')
         payment.details = request.form.get('details')
         
         db.session.commit()
-        return jsonify({'message': '付款資訊已更新'})
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '付款資訊已更新'})
+        else:
+            flash('付款資訊已更新', 'success')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
+            
     except Exception as e:
-        return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        else:
+            flash(f'更新失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_order_detail', order_id=order_id))
 
 # -----------------
 # Admin: Users
@@ -394,28 +500,45 @@ def admin_users():
 @admin_required(AdminLevel.MANAGER)
 def admin_users_add():
     try:
+        password = request.form.get('password')
+        if not password:
+            return jsonify({'error': '密碼不得為空'}), 400
+        
+        account = request.form.get('account')
+        name = request.form.get('name')
+        email = request.form.get('email')
+        
+        if not account or not name or not email:
+            return jsonify({'error': '帳號、姓名和電子郵件為必填項目'}), 400
+            
         user = User(
-            account=request.form.get('account'),
-            password=generate_password_hash(request.form.get('password')),
-            name=request.form.get('name'),
-            email=request.form.get('email'),
-            phone=request.form.get('phone'),
-            address=request.form.get('address'),
+            account=account,
+            password=generate_password_hash(password),
+            name=name,
+            email=email,
+            phone=request.form.get('phone') or '',
+            address=request.form.get('address') or '',
             level=UserLevel.FIRST
         )
         db.session.add(user)
         db.session.commit()
         return jsonify({'message': '用戶已新增'})
     except Exception as e:
+        db.session.rollback()
         return jsonify({'error': f'新增失敗：{str(e)}'}), 500
 
 @app.route('/admin/users/<int:user_id>/edit', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_users_edit(user_id):
     try:
-        user = db.session.get(User, user_id)
+        # 使用統一的數據庫會話
+        user = db.session.query(User).filter_by(id=user_id).first()
         if not user:
-            return jsonify({'error': '用戶不存在'}), 404
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': '用戶不存在'}), 404
+            else:
+                flash('用戶不存在', 'danger')
+                return redirect(url_for('admin_users'))
         
         user.name = request.form.get('name')
         user.email = request.form.get('email')
@@ -424,9 +547,21 @@ def admin_users_edit(user_id):
         user.level = UserLevel(int(request.form.get('level', 1)))
         
         db.session.commit()
-        return jsonify({'message': '用戶已更新'})
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '用戶已更新'})
+        else:
+            flash('用戶已更新', 'success')
+            return redirect(url_for('admin_users'))
+            
     except Exception as e:
-        return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        else:
+            flash(f'更新失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_users'))
 
 @app.route('/admin/users/<int:user_id>/details')
 @admin_required(AdminLevel.MANAGER)
@@ -479,43 +614,124 @@ def admin_products():
 @admin_required(AdminLevel.MANAGER)
 def admin_product_new():
     if request.method == 'POST':
-        store_id = session.get('store_id', 1)
-        p = Product(
-            store_id=store_id,
-            catalog=request.form.get('catalog'),
-            name=request.form.get('name'),
-            descriptions=request.form.get('descriptions'),
-            detail=request.form.get('detail'),
-            picture=request.form.get('picture'),
-            status=ProductStatus.NORMAL
-        )
-        db.session.add(p)
-        db.session.commit()
-        flash('商品已建立', 'success')
-        return redirect(url_for('admin_products'))
-    return render_template('admin/product_form.html')
+        try:
+            store_id = session.get('store_id', 1)
+            p = Product(
+                store_id=store_id,
+                catalog=request.form.get('catalog'),
+                name=request.form.get('name'),
+                descriptions=request.form.get('descriptions'),
+                detail=request.form.get('detail'),
+                picture=request.form.get('picture'),
+                carousel=request.form.get('carousel'),  # 添加輪播圖支持
+                status=ProductStatus(int(request.form.get('status', 1)))
+            )
+            db.session.add(p)
+            db.session.commit()
+            
+            # 根據請求類型返回適當響應
+            # 如果明確請求 JSON 響應（API 調用），返回 JSON
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'message': '商品已建立', 'product_id': p.id})
+            else:
+                # 普通網頁表單提交，使用 flash 和重定向
+                flash('商品已建立', 'success')
+                return redirect(url_for('admin_products'))
+        except Exception as e:
+            db.session.rollback()
+            # 如果明確請求 JSON 響應（API 調用），返回 JSON 錯誤
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': f'建立失敗：{str(e)}'}), 500
+            else:
+                # 普通網頁表單提交，使用 flash 和重定向
+                flash(f'建立失敗：{str(e)}', 'danger')
+    
+    stores = Store.query.all()
+    return render_template('admin/product_form.html', stores=stores)
 
 @app.route('/admin/products/<int:pid>/edit', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_product_edit(pid):
     store_id = session.get('store_id', 1)
-    p = Product.query.filter_by(id=pid, store_id=store_id).first()
+    p = db.session.query(Product).filter_by(id=pid, store_id=store_id).first()
     if not p:
-        flash('商品不存在', 'danger')
-        return redirect(url_for('admin_products'))
+        # 如果按 store_id 找不到，嘗試直接按 id 查找（調試用）
+        p = db.session.query(Product).filter_by(id=pid).first()
+        if p:
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': f'商品存在但不屬於當前商店 (商品store_id: {p.store_id}, 會話store_id: {store_id})'}), 403
+            else:
+                flash(f'商品不屬於當前商店 (商品store_id: {p.store_id}, 會話store_id: {store_id})', 'danger')
+                return redirect(url_for('admin_products'))
+        else:
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': '商品不存在'}), 404
+            else:
+                flash('商品不存在', 'danger')
+                return redirect(url_for('admin_products'))
     
     if request.method == 'POST':
-        p.catalog = request.form.get('catalog')
-        p.name = request.form.get('name')
-        p.descriptions = request.form.get('descriptions')
-        p.detail = request.form.get('detail')
-        p.picture = request.form.get('picture')
-        p.status = ProductStatus(int(request.form.get('status', 1)))
-        db.session.commit()
-        flash('商品已更新', 'success')
-        return redirect(url_for('admin_products'))
+        try:
+            old_name = p.name  # 保存舊名稱用於調試
+            
+            # 處理可能為 None 的字段，提供默認值
+            catalog = request.form.get('catalog')
+            if catalog is None or catalog.strip() == '':
+                catalog = '未分類'  # 提供默認分類
+            
+            name = request.form.get('name')
+            # 如果是圖片 API 更新（multipart/form-data 且只帶 picture 欄位），只更新圖片，不動其他欄位
+            if request.content_type and request.content_type.startswith('multipart/form-data') and 'picture' in request.form and len(request.form) == 1:
+                picture = request.form.get('picture') or ''
+                p.picture = picture
+                db.session.commit()
+                if request.headers.get('Accept') == 'application/json':
+                    return jsonify({'message': '圖片已更新', 'product_id': p.id, 'picture': p.picture})
+                else:
+                    flash('圖片已更新', 'success')
+                    return redirect(url_for('admin_products'))
+            # 其餘情況照常處理
+            if name is None or name.strip() == '':
+                name = '未命名商品'  # 提供默認名稱
+            descriptions = request.form.get('descriptions') or ''
+            detail = request.form.get('detail') or ''
+            picture = request.form.get('picture') or ''
+            carousel = request.form.get('carousel') or ''
+            
+            p.catalog = catalog
+            p.name = name
+            p.descriptions = descriptions
+            p.detail = detail
+            p.picture = picture
+            p.carousel = carousel  # 重新添加輪播圖支持
+            p.status = ProductStatus(int(request.form.get('status', 1)))
+            db.session.commit()
+            
+            # 根據請求類型返回適當響應
+            # 如果明確請求 JSON 響應（API 調用），返回 JSON
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({
+                    'message': '商品已更新',
+                    'old_name': old_name,
+                    'new_name': p.name,
+                    'product_id': p.id,
+                    'store_id': p.store_id
+                })
+            else:
+                # 普通網頁表單提交，使用 flash 和重定向
+                flash('商品已更新', 'success')
+                return redirect(url_for('admin_products'))
+        except Exception as e:
+            db.session.rollback()
+            # 如果明確請求 JSON 響應（API 調用），返回 JSON 錯誤
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+            else:
+                # 普通網頁表單提交，使用 flash 和重定向
+                flash(f'更新失敗：{str(e)}', 'danger')
     
-    return render_template('admin/product_form.html', product=p)
+    stores = Store.query.all()
+    return render_template('admin/product_form.html', product=p, stores=stores)
 
 @app.route('/admin/products/<int:pid>/delete', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
@@ -530,6 +746,41 @@ def admin_product_delete(pid):
     db.session.commit()
     flash('商品已刪除', 'success')
     return redirect(url_for('admin_products'))
+
+@app.route('/admin/products/<int:pid>/toggle-status', methods=['POST'])
+@admin_required(AdminLevel.MANAGER)
+def admin_product_toggle_status(pid):
+    try:
+        store_id = session.get('store_id', 1)
+        # 使用統一的數據庫會話
+        p = db.session.query(Product).filter_by(id=pid, store_id=store_id).first()
+        if not p:
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': '商品不存在'}), 404
+            else:
+                flash('商品不存在', 'danger')
+                return redirect(url_for('admin_products'))
+        
+        new_status = ProductStatus(int(request.form.get('status')))
+        p.status = new_status
+        db.session.commit()
+        
+        action = '已隱藏' if new_status == ProductStatus.HIDE else '已顯示'
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': f'商品{action}'})
+        else:
+            flash(f'商品{action}', 'success')
+            return redirect(url_for('admin_products'))
+            
+    except Exception as e:
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'操作失敗：{str(e)}'}), 500
+        else:
+            flash(f'操作失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_products'))
 
 # -----------------
 # Admin: Product Items
@@ -547,12 +798,25 @@ def admin_product_items(pid):
         price = int(request.form.get('price','0') or 0)
         stock = int(request.form.get('stock','0') or 0)
         if not name or price <= 0:
-            flash('名稱與價格必填', 'warning')
+            # 如果明確請求 JSON 響應（API 調用），返回 JSON 錯誤
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': '名稱與價格必填'}), 400
+            else:
+                # 普通網頁表單提交，使用 flash
+                flash('名稱與價格必填', 'warning')
         else:
             it = ProductItem(product_id=p.id, name=name, price=price, stock=stock, discount=request.form.get('discount',''))
             db.session.add(it)
             db.session.commit()
-            flash('細項已新增', 'success')
+            
+            # 如果明確請求 JSON 響應（API 調用），返回 JSON
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'message': '細項已新增', 'item_id': it.id})
+            else:
+                # 普通網頁表單提交，使用 flash
+                flash('細項已新增', 'success')
+        
+        # 普通網頁表單提交，重定向到商品細項頁面
         return redirect(url_for('admin_product_items', pid=pid))
     items = ProductItem.query.filter_by(product_id=p.id).all()
     return render_template('admin/product_items.html', product=p, items=items)
@@ -561,25 +825,45 @@ def admin_product_items(pid):
 @admin_required(AdminLevel.MANAGER)
 def admin_product_item_edit(item_id):
     try:
-        item = db.session.get(ProductItem, item_id)
+        # 使用統一的數據庫會話
+        item = db.session.query(ProductItem).filter_by(id=item_id).first()
         if not item:
-            return jsonify({'error': '商品細項不存在'}), 404
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': '商品細項不存在'}), 404
+            else:
+                flash('商品細項不存在', 'danger')
+                return redirect(url_for('admin_products'))
         
         # Check if item belongs to current store
         store_id = session.get('store_id', 1)
         if item.product.store_id != store_id:
-            return jsonify({'error': '無權限編輯此商品'}), 403
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': '無權限編輯此商品'}), 403
+            else:
+                flash('無權限編輯此商品', 'danger')
+                return redirect(url_for('admin_products'))
         
         item.price = int(request.form.get('price'))
         item.stock = int(request.form.get('stock'))
         item.discount = request.form.get('discount')
-        item.carousel = request.form.get('carousel')
         item.status = ProductStatus(int(request.form.get('status', 1)))
         
         db.session.commit()
-        return jsonify({'message': '商品細項已更新'})
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '商品細項已更新'})
+        else:
+            flash('商品細項已更新', 'success')
+            return redirect(url_for('admin_product_items', pid=item.product_id))
+            
     except Exception as e:
-        return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        else:
+            flash(f'更新失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_product_items', pid=item.product_id if 'item' in locals() else 1))
 
 @app.route('/admin/product-items/<int:item_id>/delete', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
@@ -615,9 +899,14 @@ def admin_coupons():
 @admin_required(AdminLevel.MANAGER)
 def admin_coupon_edit(cid):
     store_id = session.get('store_id', 1)
-    cp = Coupon.query.filter_by(id=cid, store_id=store_id).first()
+    # 使用統一的數據庫會話
+    cp = db.session.query(Coupon).filter_by(id=cid, store_id=store_id).first()
     if not cp:
-        return jsonify({'error': '優惠券不存在'}), 404
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': '優惠券不存在'}), 404
+        else:
+            flash('優惠券不存在', 'danger')
+            return redirect(url_for('admin_coupons'))
     
     try:
         cp.type = CouponType(int(request.form.get('type')))
@@ -625,24 +914,53 @@ def admin_coupon_edit(cid):
         cp.min_price = int(request.form.get('min_price'))
         cp.remain_count = int(request.form.get('remain_count'))
         db.session.commit()
-        return jsonify({'message': '優惠券已更新'})
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '優惠券已更新'})
+        else:
+            flash('優惠券已更新', 'success')
+            return redirect(url_for('admin_coupons'))
+            
     except Exception as e:
-        return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+        else:
+            flash(f'更新失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_coupons'))
 
 @app.route('/admin/coupons/<int:cid>/delete', methods=['POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_coupon_delete(cid):
     store_id = session.get('store_id', 1)
-    cp = Coupon.query.filter_by(id=cid, store_id=store_id).first()
+    # 使用統一的數據庫會話
+    cp = db.session.query(Coupon).filter_by(id=cid, store_id=store_id).first()
     if not cp:
-        return jsonify({'error': '優惠券不存在'}), 404
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': '優惠券不存在'}), 404
+        else:
+            flash('優惠券不存在', 'danger')
+            return redirect(url_for('admin_coupons'))
     
     try:
         db.session.delete(cp)
         db.session.commit()
-        return jsonify({'message': '優惠券已刪除'})
+        
+        # 智能響應格式
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '優惠券已刪除'})
+        else:
+            flash('優惠券已刪除', 'success')
+            return redirect(url_for('admin_coupons'))
+            
     except Exception as e:
-        return jsonify({'error': f'刪除失敗：{str(e)}'}), 500
+        db.session.rollback()
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': f'刪除失敗：{str(e)}'}), 500
+        else:
+            flash(f'刪除失敗：{str(e)}', 'danger')
+            return redirect(url_for('admin_coupons'))
 
 # -----------------
 # Admin: RawPage management with TinyMCE
@@ -669,27 +987,50 @@ def admin_raw_page_new():
         )
         db.session.add(rp)
         db.session.commit()
-        flash('頁面已建立', 'success')
-        return redirect(url_for('admin_raw_pages'))
+        
+        # 如果明確請求 JSON 響應（API 調用），返回 JSON
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'message': '頁面已建立', 'page_id': rp.id})
+        else:
+            # 普通網頁表單提交，使用 flash 和重定向
+            flash('頁面已建立', 'success')
+            return redirect(url_for('admin_raw_pages'))
     return render_template('admin/raw_page_form.html', page_types=list(PageType))
 
 @app.route('/admin/raw-pages/<int:rid>/edit', methods=['GET', 'POST'])
 @admin_required(AdminLevel.MANAGER)
 def admin_raw_page_edit(rid):
     store_id = session.get('store_id', 1)
-    rp = RawPage.query.filter_by(id=rid, store_id=store_id).first()
+    # 使用統一的數據庫會話
+    rp = db.session.query(RawPage).filter_by(id=rid, store_id=store_id).first()
     if not rp:
-        flash('頁面不存在', 'danger')
-        return redirect(url_for('admin_raw_pages'))
+        if request.headers.get('Accept') == 'application/json':
+            return jsonify({'error': '頁面不存在'}), 404
+        else:
+            flash('頁面不存在', 'danger')
+            return redirect(url_for('admin_raw_pages'))
     
     if request.method == 'POST':
-        rp.type = PageType[request.form.get('type')]
-        rp.title = request.form.get('title')
-        rp.image = request.form.get('image')
-        rp.content = request.form.get('content')
-        db.session.commit()
-        flash('頁面已更新', 'success')
-        return redirect(url_for('admin_raw_pages'))
+        try:
+            rp.type = PageType[request.form.get('type')]
+            rp.title = request.form.get('title')
+            rp.image = request.form.get('image')
+            rp.content = request.form.get('content')
+            db.session.commit()
+            
+            # 智能響應格式
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'message': '頁面已更新'})
+            else:
+                flash('頁面已更新', 'success')
+                return redirect(url_for('admin_raw_pages'))
+        except Exception as e:
+            db.session.rollback()
+            if request.headers.get('Accept') == 'application/json':
+                return jsonify({'error': f'更新失敗：{str(e)}'}), 500
+            else:
+                flash(f'更新失敗：{str(e)}', 'danger')
+                return redirect(url_for('admin_raw_pages'))
     
     return render_template('admin/raw_page_form.html', page=rp, page_types=list(PageType))
 
@@ -832,8 +1173,7 @@ def api_create_order():
             # Create order item
             order_item = OrderItem(
                 product_item_id=product_item.id,
-                quantity=item_data['quantity'],
-                price=price
+                quantity=item_data['quantity']
             )
             order_items.append(order_item)
             
@@ -982,11 +1322,11 @@ def confirm_order(order_id):
 def api_products():
     """Get products with optional filtering"""
     try:
-        store_id = request.args.get('store_id', 1, type=int)
+        store_id = request.args.get('store', 1, type=int)  # Changed from 'store_id' to 'store'
         category = request.args.get('category', '')
         status = request.args.get('status', '')
         
-        query = Product.query.filter_by(store_id=store_id)
+        query = db.session.query(Product).filter_by(store_id=store_id)
         
         if category:
             query = query.filter_by(catalog=category)
@@ -1006,6 +1346,7 @@ def api_products():
                 'descriptions': p.descriptions,
                 'detail': p.detail,
                 'picture': p.picture,
+                'carousel': p.carousel,
                 'status': p.status.value,
                 'items': []
             }
@@ -1016,7 +1357,6 @@ def api_products():
                     'price': item.price,
                     'stock': item.stock,
                     'discount': item.discount,
-                    'carousel': item.carousel,
                     'status': item.status.value
                 }
                 product_data['items'].append(item_data)
@@ -1030,7 +1370,8 @@ def api_products():
 @app.route('/api/products/<int:product_id>')
 def api_product_detail(product_id: int):
     try:
-        p = db.session.get(Product, product_id)
+        # 使用 Flask-SQLAlchemy 會話查詢
+        p = db.session.query(Product).filter_by(id=product_id).first()
         if not p:
             return jsonify({'error': '商品不存在'}), 404
         items = ProductItem.query.filter_by(product_id=p.id).all()
@@ -1041,6 +1382,7 @@ def api_product_detail(product_id: int):
             'descriptions': p.descriptions,
             'detail': p.detail,
             'picture': p.picture,
+            'carousel': p.carousel,
             'status': p.status.value,
             'items': [
                 {
@@ -1079,9 +1421,9 @@ def api_order_detail(order_id):
         
         for item in order.order_items:
             item_data = {
-                'product_name': item.product.name if item.product else '未知商品',
+                'product_name': item.product_item.name if item.product_item else '未知商品',
                 'quantity': item.quantity,
-                'price': item.price
+                'price': item.product_item.price if item.product_item else None
             }
             order_data['items'].append(item_data)
         
@@ -1290,6 +1632,176 @@ def api_product_items_bulk():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# -----------------
+# Export Functions
+# -----------------
+
+@app.route('/admin/export/users')
+@admin_required(AdminLevel.MANAGER)
+def export_users():
+    """匯出用戶資料為CSV"""
+    try:
+        store_id = session.get('store_id', 1)
+        users = db.session.query(User).join(Order).filter(Order.store_id == store_id).distinct().all()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # CSV表頭
+        writer.writerow(['用戶ID', '帳號', '姓名', '電子郵件', '電話', '地址', '會員等級', '錢包餘額', '獎金餘額', '註冊時間'])
+        
+        # 數據行
+        for user in users:
+            writer.writerow([
+                user.id,
+                user.account,
+                user.name,
+                user.email,
+                user.phone or '',
+                user.address or '',
+                user.level.name if hasattr(user.level, 'name') else str(user.level),
+                user.wallet,
+                user.award,
+                user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else ''
+            ])
+        
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=users_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            }
+        )
+    except Exception as e:
+        flash(f'匯出失敗：{str(e)}', 'danger')
+        return redirect(url_for('admin_users'))
+
+@app.route('/admin/export/products')
+@admin_required(AdminLevel.MANAGER)
+def export_products():
+    """匯出商品資料為CSV"""
+    try:
+        store_id = session.get('store_id', 1)
+        products = Product.query.filter_by(store_id=store_id).all()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # CSV表頭
+        writer.writerow(['商品ID', '名稱', '分類', '簡介', '狀態', '建立時間'])
+        
+        # 數據行
+        for product in products:
+            writer.writerow([
+                product.id,
+                product.name,
+                product.catalog,
+                product.descriptions or '',
+                '正常' if product.status.value == 1 else '隱藏',
+                product.created_at.strftime('%Y-%m-%d %H:%M:%S') if product.created_at else ''
+            ])
+        
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=products_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            }
+        )
+    except Exception as e:
+        flash(f'匯出失敗：{str(e)}', 'danger')
+        return redirect(url_for('admin_products'))
+
+@app.route('/admin/export/orders')
+@admin_required(AdminLevel.STAFF)
+def export_orders():
+    """匯出訂單資料為CSV"""
+    try:
+        store_id = session.get('store_id', 1)
+        orders = Order.query.filter_by(store_id=store_id).order_by(Order.created_at.desc()).all()
+        
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # CSV表頭
+        writer.writerow(['訂單ID', '用戶姓名', '用戶電子郵件', '總金額', '狀態', '優惠券', '備註', '建立時間'])
+        
+        # 數據行
+        for order in orders:
+            writer.writerow([
+                order.id,
+                order.user.name if order.user else '',
+                order.user.email if order.user else '',
+                order.total,
+                order.status.name if hasattr(order.status, 'name') else str(order.status),
+                order.coupon or '',
+                order.remark or '',
+                order.created_at.strftime('%Y-%m-%d %H:%M:%S') if order.created_at else ''
+            ])
+        
+        output.seek(0)
+        return Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename=orders_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            }
+        )
+    except Exception as e:
+        flash(f'匯出失敗：{str(e)}', 'danger')
+        return redirect(url_for('admin_orders'))
+
+# -----------------
+# Image Upload API
+# -----------------
+
+def allowed_file(filename):
+    """檢查文件是否為允許的圖片格式"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/api/upload/image', methods=['POST'])
+@admin_required(AdminLevel.STAFF)
+def upload_image():
+    """上傳圖片API"""
+    if 'file' not in request.files:
+        return jsonify({'error': '沒有選擇文件'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '沒有選擇文件'}), 400
+    
+    if file and allowed_file(file.filename):
+        try:
+            # 生成唯一文件名
+            file_extension = file.filename.rsplit('.', 1)[1].lower()
+            unique_filename = f"{uuid.uuid4().hex}.{file_extension}"
+            
+            # 保存文件
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(file_path)
+            
+            # 返回文件URL
+            file_url = url_for('uploaded_file', filename=unique_filename, _external=True)
+            
+            return jsonify({
+                'message': '圖片上傳成功',
+                'url': file_url,
+                'filename': unique_filename
+            })
+            
+        except Exception as e:
+            return jsonify({'error': f'上傳失敗：{str(e)}'}), 500
+    else:
+        return jsonify({'error': '不支援的文件格式，請上傳 PNG, JPG, JPEG, GIF 或 WebP 格式'}), 400
+
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    """提供上傳的圖片文件"""
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
@@ -1302,4 +1814,4 @@ def internal_error(error):
 
 if __name__ == '__main__':
     # init_db(seed=False)
-    app.run(debug=True, host='localhost', port=8833)
+    app.run(debug=True, host='localhost', port=8994)

@@ -221,14 +221,14 @@ function editItem(id, name, price, stock, discount) {
   document.getElementById('editItemDiscount').value = discount;
   
   const form = document.getElementById('editItemForm');
-  form.action = `/admin/items/${id}/edit`;
+  form.action = `/admin/product-items/${id}/edit`;
   
   showModal('editItemModal');
 }
 
 function deleteItem(id, name) {
   document.getElementById('deleteItemName').textContent = name;
-  document.getElementById('deleteItemForm').action = `/admin/items/${id}/delete`;
+  document.getElementById('deleteItemForm').action = `/admin/product-items/${id}/delete`;
   showModal('deleteItemModal');
 }
 

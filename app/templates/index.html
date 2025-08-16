@@ -107,6 +107,34 @@
         .social-links a:hover {
             color: var(--primary-color);
         }
+        .mobile-cart-btn { display: none; }
+        @media (max-width: 991.98px) {
+            .mobile-cart-btn { display: flex !important; }
+            .navbar .cart-badge { display: none !important; }
+        }
+        .cart-badge-mobile { display: flex !important; align-items: center; }
+        @media (min-width: 992px) {
+            .cart-badge-mobile { display: none !important; }
+        }
+        @media (max-width: 991.98px) {
+            .navbar .cart-badge { display: none !important; }
+        }
+        .cart-badge-mobile {
+            display: flex !important;
+            align-items: center;
+            background: transparent;
+            border: 1px solid var(--bs-navbar-color);
+            border-radius: 0.375rem;
+            color: var(--bs-navbar-color);
+            height: 40px;
+            width: 40px;
+            justify-content: center;
+            transition: background 0.2s, border 0.2s;
+        }
+        .cart-badge-mobile:hover {
+            background: rgba(0,0,0,0.05);
+            border-color: var(--bs-navbar-color);
+        }
     </style>
 </head>
 <body>
@@ -117,9 +145,15 @@
                 <i class="bi bi-shop"></i> 智能電商平台
             </a>
             
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+            <div class="d-lg-none d-flex align-items-center ms-auto">
+                <button class="navbar-toggler me-2" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <a class="nav-link cart-badge-mobile px-2" href="#" onclick="showCart()" style="position:relative;background:transparent;border:1px solid var(--bs-navbar-color);border-radius:0.375rem;display:flex;align-items:center;justify-content:center;height:40px;width:40px;color:var(--bs-navbar-color);transition:background 0.2s,border 0.2s;">
+                    <i class="bi bi-cart3" style="font-size:1.5rem;"></i>
+                    <span class="cart-count" id="cartCountMobile" style="position:absolute;top:2px;right:0;">0</span>
+                </a>
+            </div>
             
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
@@ -156,7 +190,7 @@
                                 <li><a class="dropdown-item" href="/logout">登出</a></li>
                             </ul>
                         </li>
-                        <li class="nav-item">
+                        <li class="nav-item d-none d-lg-block">
                             <a class="nav-link cart-badge" href="#" onclick="showCart()">
                                 <i class="bi bi-cart3"></i>
                                 <span class="cart-count" id="cartCount">0</span>
@@ -220,7 +254,7 @@
                                         NT$ 0
                                     {% endif %}
                                 </div>
-                                <button class="btn btn-primary w-100" onclick="addToCart({{ product.id }})">
+                                <button class="btn btn-primary w-100" onclick="addToCart('{{ product.id }}')">
                                     <i class="bi bi-cart-plus"></i> 加入購物車
                                 </button>
                             </div>
@@ -392,26 +426,28 @@
 
     <!-- Floating AI Chat Button and Popup -->
     <style>
-      .chat-fab { position: fixed; right: 20px; bottom: 90px; width:56px; height:56px; border-radius:50%; background: var(--primary-color); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow: 0 6px 18px rgba(0,0,0,0.2); z-index:1050; cursor:pointer; }
+      .chat-fab { position: fixed; right: 20px; bottom: 90px; width:70px; height:70px; border-radius:50%; background: var(--primary-color); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow: 0 6px 18px rgba(0,0,0,0.2); z-index:1050; cursor:pointer; }
       .chat-popup { position: fixed; right: 20px; bottom: 160px; width: 320px; max-height: 60vh; background:#fff; border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); display:none; flex-direction:column; overflow:hidden; z-index:1050; }
       .chat-header { background: var(--primary-color); color:#fff; padding:10px 12px; }
       .chat-body { padding:10px; overflow:auto; max-height: 45vh; }
       .chat-input { display:flex; gap:8px; padding:10px; border-top:1px solid #eee; }
       .chat-msg { background:#f5f7fb; border-radius:12px; padding:8px 10px; margin:6px 0; }
       .chat-msg.ai { background:#e7f1ff; }
+      .chat-close-btn { background: none; border: none; color: white; font-size: 1.2rem; padding: 0; }
+      .chat-send-btn { white-space: nowrap; }
     </style>
     <div class="chat-fab" onclick="toggleChatPopup()"><i class="bi bi-chat-dots"></i></div>
     <div class="chat-popup" id="chatPopup">
       <div class="chat-header d-flex justify-content-between align-items-center">
         <div><i class="bi bi-robot"></i> AI 客服</div>
-        <button class="btn btn-sm btn-light" onclick="toggleChatPopup()">關閉</button>
+        <button class="chat-close-btn" onclick="toggleChatPopup()">&times;</button>
       </div>
       <div class="chat-body" id="chatBody">
         <div class="chat-msg ai">您好！我是智能客服助手，請問需要什麼協助？</div>
       </div>
       <div class="chat-input">
         <input id="chatText" class="form-control" placeholder="輸入訊息..." onkeydown="if(event.key==='Enter'){sendChat()}" />
-        <button class="btn btn-primary" onclick="sendChat()">送出</button>
+        <button class="btn btn-primary chat-send-btn" onclick="sendChat()">送出</button>
       </div>
     </div>
 
@@ -419,26 +455,72 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
     <script>
-        // Shopping cart functionality
+        // 購物車功能
         let cart = JSON.parse(localStorage.getItem('cart') || '[]');
         let selectingProductId = null;
         let selectedItemId = null;
         let chatSessionId = null;
         
+        // Toast 通知
+        function showToast(title, message, type = 'info') {
+            let toastContainer = document.getElementById('toastContainer');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toastContainer';
+                toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 9999;';
+                document.body.appendChild(toastContainer);
+            }
+            const toast = document.createElement('div');
+            toast.className = 'toast align-items-center text-white border-0';
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+            const bgClass = type === 'success' ? 'bg-success' : 
+                           type === 'error' ? 'bg-danger' : 
+                           type === 'warning' ? 'bg-warning' : 'bg-info';
+            toast.classList.add(bgClass);
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">
+                        <strong>${title}</strong><br>
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            toastContainer.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast, {
+                autohide: true,
+                delay: 3000
+            });
+            toast.addEventListener('click', () => bsToast.hide()); // 點擊本體立即消失
+            bsToast.show();
+            toast.addEventListener('hidden.bs.toast', () => {
+                toast.remove();
+            });
+        }
+        
         function updateCartCount() {
             const count = cart.reduce((total, item) => total + item.quantity, 0);
-            document.getElementById('cartCount').textContent = count;
+            var cartCount = document.getElementById('cartCount');
+            if(cartCount) cartCount.textContent = count;
+            var cartCountMobile = document.getElementById('cartCountMobile');
+            if(cartCountMobile) cartCountMobile.textContent = count;
         }
         
         async function addToCart(productId) {
             selectingProductId = productId;
-            // Fetch product items for variant selection
+            // 取得商品規格
             const res = await fetch(`/api/products/${productId}`);
             const data = await res.json();
             if (!data.items || data.items.length === 0) {
                 showToast('錯誤', '此商品沒有可選規格', 'error');
                 return;
             }
+            window._currentProductItems = data.items.map(it=>it.id); // 暫存目前可選規格id
+            window._currentProductItemsDetail = {};
+            data.items.forEach(it => { window._currentProductItemsDetail[it.id] = it; }); // 暫存所有細項資料
+            window._currentProductName = data.name;
             const list = data.items.map(it => `
               <div class="form-check">
                 <input class="form-check-input" type="radio" name="variant" id="var_${it.id}" value="${it.id}" ${it.stock>0?'':'disabled'} onchange="selectedItemId=${it.id}">
@@ -449,7 +531,7 @@
             document.getElementById('variantOptions').innerHTML = list;
             document.getElementById('variantTitle').textContent = `選擇規格 - ${data.name}`;
             document.getElementById('variantQty').value = 1;
-            selectedItemId = (data.items.find(it=>it.stock>0)||data.items[0]).id;
+            selectedItemId = null; // 取消自動預設，必須手動選擇
             const vm = new bootstrap.Modal(document.getElementById('variantModal'));
             vm.show();
         }
@@ -463,12 +545,36 @@
         
         function confirmAddToCart(){
             const qty = parseInt(document.getElementById('variantQty').value||'1',10);
+            // 嚴格檢查 selectedItemId
             if (!selectedItemId) { showToast('錯誤','請先選擇規格','error'); return; }
-            // Push to cart
+            if (!window._currentProductItems || !window._currentProductItems.includes(selectedItemId)) {
+                showToast('錯誤','規格資料異常，請重新選擇','error');
+                return;
+            }
+            // 取得商品細項資訊
+            const itemDetail = window._currentProductItemsDetail[selectedItemId];
+            if (!itemDetail) {
+                showToast('錯誤','規格資料異常','error');
+                return;
+            }
+            // 加入購物車（包含商品資訊）
             const existing = cart.find(i=>i.productItemId===selectedItemId);
-            if (existing) existing.quantity += qty; else cart.push({ productItemId: selectedItemId, quantity: qty });
+            if (existing) {
+                existing.quantity += qty;
+            } else {
+                cart.push({
+                    productItemId: selectedItemId,
+                    quantity: qty,
+                    name: window._currentProductName,
+                    itemName: itemDetail.name,
+                    price: itemDetail.price,
+                    productName: window._currentProductName,
+                    // 可擴充更多欄位
+                });
+            }
             localStorage.setItem('cart', JSON.stringify(cart));
             updateCartCount();
+            console.log('加入購物車:', { productItemId: selectedItemId, quantity: qty, cart });
             showToast('成功', '商品已加入購物車', 'success');
             bootstrap.Modal.getInstance(document.getElementById('variantModal')).hide();
         }
@@ -486,28 +592,38 @@
                 document.getElementById('cartTotal').textContent = 0;
                 return;
             }
-            // Fetch item details in parallel
-            const ids = cart.map(i=>i.productItemId);
-            // Map productItemId -> details via products API by reverse lookup not provided; simplify: show ids
             let total = 0;
-            const rows = cart.map(i=>{
-                const line = `<div class="d-flex align-items-center justify-content-between border-bottom py-2">
-                  <div>
-                    <div class="fw-semibold">項目 #${i.productItemId}</div>
-                    <div class="text-muted">數量：
-                      <button class="btn btn-sm btn-outline-secondary" onclick="changeCartQty(${i.productItemId}, -1)">-</button>
-                      <span class="mx-2" id="qty_${i.productItemId}">${i.quantity}</span>
-                      <button class="btn btn-sm btn-outline-secondary" onclick="changeCartQty(${i.productItemId}, 1)">+</button>
+            const rows = cart.map(i => {
+                const itemTotal = i.price * i.quantity;
+                total += itemTotal;
+                const line = `
+                <div class="d-flex align-items-center justify-content-between border-bottom py-3">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center">
+                            <div class="me-3" style="width: 60px; height: 60px; background: #f8f9fa; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+                                <i class="bi bi-box text-muted"></i>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="fw-semibold">${i.productName || i.name || `商品 #${i.productItemId}`}</div>
+                                <div class="text-muted small">${i.itemName || ''}</div>
+                                <div class="text-success fw-bold">NT$ ${itemTotal.toLocaleString()}</div>
+                            </div>
+                        </div>
                     </div>
-                  </div>
-                  <div>
-                    <button class="btn btn-sm btn-outline-danger" onclick="removeCartItem(${i.productItemId})"><i class="bi bi-trash"></i></button>
-                  </div>
+                    <div class="text-end">
+                        <div class="mb-2">
+                            <button class="btn btn-sm btn-outline-secondary" onclick="changeCartQty(${i.productItemId}, -1)">-</button>
+                            <span class="mx-2" id="qty_${i.productItemId}">${i.quantity}</span>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="changeCartQty(${i.productItemId}, 1)">+</button>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="removeCartItem(${i.productItemId})">
+                            <i class="bi bi-trash"></i> 移除
+                        </button>
+                    </div>
                 </div>`;
                 return line;
             }).join('');
             cartItems.innerHTML = rows;
-            // Without price lookup, keep total as 0 placeholder; could be enhanced by joining product_full_view via new API
             document.getElementById('cartTotal').textContent = total.toLocaleString();
             document.getElementById('pills-cart').innerHTML = rows;
         }
@@ -520,6 +636,7 @@
             localStorage.setItem('cart', JSON.stringify(cart));
             document.getElementById(`qty_${itemId}`).textContent = it.quantity;
             updateCartCount();
+            loadCartItems(); // 重新載入以更新總價
         }
         
         function removeCartItem(itemId){
@@ -531,11 +648,121 @@
         
         function startCheckout(){
             document.getElementById('checkoutSteps').style.display = 'block';
+            // 顯示配送資料步驟
             const pillsDelivery = new bootstrap.Tab(document.getElementById('pills-delivery-tab'));
             pillsDelivery.show();
         }
         
         function checkout() { startCheckout(); }
+        
+        // 新增：驗證配送資料
+        function validateDeliveryInfo() {
+            const name = document.getElementById('deliveryName').value.trim();
+            const phone = document.getElementById('deliveryPhone').value.trim();
+            const address = document.getElementById('deliveryAddress').value.trim();
+            
+            if (!name || !phone || !address) {
+                showToast('錯誤', '請填寫完整的配送資料', 'error');
+                return false;
+            }
+            return true;
+        }
+        
+        // 新增：驗證付款資料
+        function validatePaymentInfo() {
+            const cardNumber = document.getElementById('cardNumber').value.trim();
+            const cardExpiry = document.getElementById('cardExpiry').value.trim();
+            const cardCVC = document.getElementById('cardCVC').value.trim();
+            const cardName = document.getElementById('cardName').value.trim();
+            
+            if (!cardNumber || !cardExpiry || !cardCVC || !cardName) {
+                showToast('錯誤', '請填寫完整的付款資料', 'error');
+                return false;
+            }
+            return true;
+        }
+        
+        // 新增：處理步驟切換
+        function nextStep(currentStep, nextStep) {
+            if (currentStep === 'delivery') {
+                if (!validateDeliveryInfo()) return;
+            } else if (currentStep === 'payment') {
+                if (!validatePaymentInfo()) return;
+            }
+            
+            const nextTab = new bootstrap.Tab(document.getElementById(`pills-${nextStep}-tab`));
+            nextTab.show();
+        }
+        
+        // 新增：載入確認訂單資訊
+        async function loadOrderConfirmation() {
+            const confirmSummary = document.getElementById('confirmSummary');
+            
+            // 取得商品詳細資訊
+            const itemIds = cart.map(i => i.productItemId);
+            const productDetails = {};
+            
+            try {
+                for (let itemId of itemIds) {
+                    const res = await fetch(`/api/product-items/${itemId}`);
+                    const data = await res.json();
+                    if (data) {
+                        productDetails[itemId] = data;
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching product details:', error);
+            }
+            
+            let total = 0;
+            const orderItems = cart.map(i => {
+                const product = productDetails[i.productItemId];
+                const itemTotal = product ? product.price * i.quantity : 0;
+                total += itemTotal;
+                return `
+                <div class="d-flex justify-content-between py-2 border-bottom">
+                    <div>
+                        <div class="fw-semibold">${product ? product.name : `商品 #${i.productItemId}`}</div>
+                        <div class="text-muted small">${product ? product.product_name : '商品名稱載入中...'}</div>
+                        <div class="text-muted">數量: ${i.quantity}</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="fw-bold">NT$ ${itemTotal.toLocaleString()}</div>
+                    </div>
+                </div>`;
+            }).join('');
+            
+            const deliveryName = document.getElementById('deliveryName').value;
+            const deliveryPhone = document.getElementById('deliveryPhone').value;
+            const deliveryAddress = document.getElementById('deliveryAddress').value;
+            const deliveryNote = document.getElementById('deliveryNote').value;
+            const cardName = document.getElementById('cardName').value;
+            const cardNumber = document.getElementById('cardNumber').value;
+            
+            confirmSummary.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="fw-bold mb-3">配送資料</h6>
+                        <div class="mb-2"><strong>收件人:</strong> ${deliveryName}</div>
+                        <div class="mb-2"><strong>電話:</strong> ${deliveryPhone}</div>
+                        <div class="mb-2"><strong>地址:</strong> ${deliveryAddress}</div>
+                        ${deliveryNote ? `<div class="mb-2"><strong>備註:</strong> ${deliveryNote}</div>` : ''}
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="fw-bold mb-3">付款資料</h6>
+                        <div class="mb-2"><strong>持卡人:</strong> ${cardName}</div>
+                        <div class="mb-2"><strong>卡號:</strong> **** **** **** ${cardNumber.slice(-4)}</div>
+                    </div>
+                </div>
+                <hr>
+                <h6 class="fw-bold mb-3">訂單明細</h6>
+                ${orderItems}
+                <div class="d-flex justify-content-between py-3">
+                    <div class="fw-bold">總計</div>
+                    <div class="fw-bold text-success">NT$ ${total.toLocaleString()}</div>
+                </div>
+            `;
+        }
         
         async function placeOrder(){
             if (!sessionStorage.getItem('user_id')) {
@@ -546,10 +773,34 @@
                 showToast('錯誤','購物車為空','error');
                 return;
             }
-            const payload = { items: cart.map(i=>({ product_item_id: i.productItemId, quantity: i.quantity })) };
-            const res = await fetch('/api/orders', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+            
+            // 收集所有資料
+            const orderData = {
+                items: cart.map(i=>({ product_item_id: i.productItemId, quantity: i.quantity })),
+                delivery: {
+                    name: document.getElementById('deliveryName').value,
+                    phone: document.getElementById('deliveryPhone').value,
+                    address: document.getElementById('deliveryAddress').value,
+                    note: document.getElementById('deliveryNote').value
+                },
+                payment: {
+                    card_name: document.getElementById('cardName').value,
+                    card_number: document.getElementById('cardNumber').value,
+                    card_expiry: document.getElementById('cardExpiry').value,
+                    card_cvc: document.getElementById('cardCVC').value
+                }
+            };
+            
+            const res = await fetch('/api/orders', { 
+                method:'POST', 
+                headers:{'Content-Type':'application/json'}, 
+                body: JSON.stringify(orderData) 
+            });
             const data = await res.json();
-            if (data.error){ showToast('錯誤', data.error, 'error'); return; }
+            if (data.error){ 
+                showToast('錯誤', data.error, 'error'); 
+                return; 
+            }
             showToast('成功', '訂單已建立', 'success');
             cart = [];
             localStorage.setItem('cart', JSON.stringify(cart));
@@ -557,7 +808,7 @@
             bootstrap.Modal.getInstance(document.getElementById('cartModal')).hide();
         }
         
-        // AI Chat popup
+        // AI 聊天懸浮窗
         function toggleChatPopup(){
           const el = document.getElementById('chatPopup');
           el.style.display = (el.style.display==='flex') ? 'none' : 'flex';
@@ -569,7 +820,11 @@
           const body = document.getElementById('chatBody');
           const div = document.createElement('div');
           div.className = 'chat-msg' + (isAi?' ai':'');
-          div.textContent = text;
+          if (isAi) {
+            div.innerHTML = text; // Use innerHTML for AI messages to support formatting
+          } else {
+            div.textContent = text; // Use textContent for user messages to prevent XSS
+          }
           body.appendChild(div);
           body.scrollTop = body.scrollHeight;
         }
@@ -586,10 +841,15 @@
             }).catch(()=> addChatMessage('抱歉，系統忙碌中，請稍後再試。', true));
         }
         
-        // Initialize cart count
+        // 初始化購物車數量
         document.addEventListener('DOMContentLoaded', function() {
             updateCartCount();
         });
     </script>
+    <style>
+      /* 客服聊天懸浮窗位置調整，往下移動 */
+      .chat-fab { position: fixed; right: 20px; bottom: 30px !important; width:70px; height:70px; border-radius:50%; background: var(--primary-color); color:#fff; display:flex; align-items:center; justify-content:center; box-shadow: 0 6px 18px rgba(0,0,0,0.2); z-index:1050; cursor:pointer; }
+      .chat-popup { position: fixed; right: 20px; bottom: 100px !important; width: 320px; max-height: 60vh; background:#fff; border-radius:16px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); display:none; flex-direction:column; overflow:hidden; z-index:1050; }
+    </style>
 </body>
 </html>

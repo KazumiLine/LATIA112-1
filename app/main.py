@@ -8,6 +8,7 @@ import asyncio
 async def run_chat(store_id: int, user_id: str):
     agent = AgentBuilder(store_id, user_id)
     print("Type 'exit' to quit. Type 'help' for hints.")
+    await agent.update_info(store_id, user_id)
     while True:
         try:
             user_input = input(f"[{user_id}] > ").strip()

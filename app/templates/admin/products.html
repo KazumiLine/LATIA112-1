@@ -4,9 +4,14 @@
 <div class="container-fluid py-3">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h3><i class="bi bi-box"></i> 商品管理</h3>
-    <button class="btn btn-primary" onclick="showModal('addProductModal')">
-      <i class="bi bi-plus-circle"></i> 新增商品
-    </button>
+    <div class="btn-group">
+      <a href="{{ url_for('export_products') }}" class="btn btn-outline-success">
+        <i class="bi bi-download"></i> 匯出CSV
+      </a>
+      <button class="btn btn-primary" onclick="showModal('addProductModal')">
+        <i class="bi bi-plus-circle"></i> 新增商品
+      </button>
+    </div>
   </div>
 
   <!-- Search Bar -->
@@ -64,13 +69,18 @@
             <tr>
               <td>#{{ p.id }}</td>
               <td>
-                {% if p.picture %}
-                  <img src="{{ p.picture }}" alt="{{ p.name }}" style="width: 50px; height: 50px; object-fit: cover; border-radius: 5px;">
-                {% else %}
-                  <div class="bg-light d-flex align-items-center justify-content-center" style="width: 50px; height: 50px; border-radius: 5px;">
-                    <i class="bi bi-image text-muted"></i>
+                <div class="position-relative product-image-container" style="width: 50px; height: 50px;">
+                  {% if p.picture %}
+                    <img src="{{ p.picture }}" alt="{{ p.name }}" class="product-image-preview" style="width: 100%; height: 100%; object-fit: cover; border-radius: 5px; cursor: pointer;" onclick="openImageManager({{ p.id }}, '{{ p.picture }}')">
+                  {% else %}
+                    <div class="bg-light d-flex align-items-center justify-content-center product-image-placeholder" style="width: 100%; height: 100%; border-radius: 5px; cursor: pointer;" onclick="openImageManager({{ p.id }}, '')">
+                      <i class="bi bi-image text-muted"></i>
+                    </div>
+                  {% endif %}
+                  <div class="position-absolute top-0 end-0 image-change-overlay" style="opacity: 0; background: rgba(0,0,0,0.7); border-radius: 50%; width: 20px; height: 20px; margin: -5px;">
+                    <i class="bi bi-camera text-white" style="font-size: 0.7rem; margin: 2px;"></i>
                   </div>
-                {% endif %}
+                </div>
               </td>
               <td>{{ p.name }}</td>
               <td><span class="badge bg-secondary">{{ p.catalog }}</span></td>
@@ -85,14 +95,18 @@
               <td>{{ p.created_at.strftime('%Y-%m-%d %H:%M') if p.created_at else '—' }}</td>
               <td>
                 <div class="btn-group" role="group">
-                  <button class="btn btn-sm btn-outline-primary" onclick="editProduct({{ p.id }}, '{{ p.name }}', '{{ p.catalog }}', '{{ p.descriptions or '' }}', '{{ p.detail or '' }}', '{{ p.picture or '' }}')">
+                  <button class="btn btn-sm btn-outline-primary" onclick="editProduct({{ p.id }}, '{{ p.name }}', '{{ p.catalog }}', '{{ p.descriptions or '' }}', '{{ p.detail or '' }}', '{{ p.picture or '' }}', {{ p.status.value }})">
                     <i class="bi bi-pencil"></i>
                   </button>
                   <a href="{{ url_for('admin_product_items', pid=p.id) }}" class="btn btn-sm btn-outline-info">
                     <i class="bi bi-list-ul"></i>
                   </a>
-                  <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct({{ p.id }}, '{{ p.name }}')">
-                    <i class="bi bi-trash"></i>
+                  <button class="btn btn-sm {% if p.status.value == 1 %}btn-outline-warning{% else %}btn-outline-success{% endif %}" onclick="toggleProductStatus({{ p.id }}, '{{ p.name }}', {{ p.status.value }})">
+                    {% if p.status.value == 1 %}
+                      <i class="bi bi-eye-slash"></i>
+                    {% else %}
+                      <i class="bi bi-eye"></i>
+                    {% endif %}
                   </button>
                 </div>
               </td>
@@ -178,9 +192,16 @@
               <label class="form-label">詳細說明</label>
               <textarea class="form-control" name="detail" id="editDetail" rows="4" placeholder="商品詳細規格、材質、保固等..."></textarea>
             </div>
-            <div class="col-12">
+            <div class="col-md-8">
               <label class="form-label">圖片URL</label>
               <input type="url" class="form-control" name="picture" id="editPicture" placeholder="https://example.com/image.jpg">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">狀態</label>
+              <select class="form-select" name="status" id="editStatus">
+                <option value="1">正常</option>
+                <option value="2">隱藏</option>
+              </select>
             </div>
           </div>
         </div>
@@ -193,25 +214,88 @@
   </div>
 </div>
 
-<!-- Delete Confirmation Modal -->
-<div class="modal fade" id="deleteProductModal" tabindex="-1" aria-labelledby="deleteProductModalLabel" aria-hidden="true">
+<!-- Toggle Status Confirmation Modal -->
+<div class="modal fade" id="toggleStatusModal" tabindex="-1" aria-labelledby="toggleStatusModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="deleteProductModalLabel">
-          <i class="bi bi-exclamation-triangle text-warning"></i> 確認刪除
+        <h5 class="modal-title" id="toggleStatusModalLabel">
+          <i class="bi bi-exclamation-triangle text-warning"></i> 確認操作
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p>確定要隱藏商品 <strong id="deleteProductName"></strong> 嗎？</p>
-        <p class="text-muted small">此操作會將商品狀態設為隱藏，不會真正刪除資料。</p>
+        <p>確定要<span id="toggleAction"></span>商品 <strong id="toggleProductName"></strong> 嗎？</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-        <form id="deleteProductForm" method="post" style="display: inline;">
-          <button type="submit" class="btn btn-danger">確認隱藏</button>
-        </form>
+        <button type="button" class="btn btn-primary" id="confirmToggle">確認</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Image Manager Modal -->
+<div class="modal fade" id="imageManagerModal" tabindex="-1" aria-labelledby="imageManagerModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="imageManagerModalLabel">
+          <i class="bi bi-image"></i> 圖片管理
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-4">
+          <!-- Current Image Display -->
+          <div class="col-md-6">
+            <label class="form-label">目前圖片</label>
+            <div class="border rounded p-3 text-center" style="min-height: 250px; background-color: #f8f9fa;">
+              <div id="currentImageDisplay">
+                <i class="bi bi-image" style="font-size: 3rem; color: #6c757d;"></i>
+                <p class="text-muted mt-2">暫無圖片</p>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Upload and Preview -->
+          <div class="col-md-6">
+            <label class="form-label">上傳新圖片</label>
+            <div class="upload-area border rounded p-3 text-center" style="min-height: 250px; border-style: dashed !important; cursor: pointer; transition: all 0.3s ease;" 
+                 id="uploadArea"
+                 ondrop="handleDrop(event)" 
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)"
+                 onclick="document.getElementById('imageUploadInput').click()">
+              <div id="uploadPlaceholder">
+                <i class="bi bi-cloud-upload" style="font-size: 3rem; color: #0d6efd;"></i>
+                <p class="text-primary mt-2 mb-1">點擊或拖拽圖片到此處</p>
+                <small class="text-muted">支援 JPG、PNG、GIF、WebP 格式</small>
+              </div>
+              <div id="previewArea" style="display: none;">
+                <img id="newImagePreview" style="max-width: 100%; max-height: 200px; border-radius: 5px;">
+                <div class="mt-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearPreview()">清除</button>
+                </div>
+              </div>
+            </div>
+            <input type="file" id="imageUploadInput" accept="image/*" style="display: none;">
+            
+            <!-- Manual URL Input -->
+            <div class="mt-3">
+              <label class="form-label">或輸入圖片URL</label>
+              <div class="input-group">
+                <input type="url" class="form-control" id="imageUrlInput" placeholder="https://example.com/image.jpg">
+                <button class="btn btn-outline-secondary" type="button" onclick="previewUrl()">預覽</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-danger" id="removeImageBtn" onclick="removeImage()" style="display: none;">移除圖片</button>
+        <button type="button" class="btn btn-primary" id="saveImageBtn" onclick="saveImage()">儲存圖片</button>
       </div>
     </div>
   </div>
@@ -220,23 +304,272 @@
 
 {% block extra_js %}
 <script>
-function editProduct(id, name, catalog, descriptions, detail, picture) {
+// 全局變量
+let currentProductId = null;
+let currentImageUrl = null;
+let newImageUrl = null;
+
+function editProduct(id, name, catalog, descriptions, detail, picture, status) {
   document.getElementById('editName').value = name;
   document.getElementById('editCatalog').value = catalog;
   document.getElementById('editDescriptions').value = descriptions;
   document.getElementById('editDetail').value = detail;
   document.getElementById('editPicture').value = picture;
+  document.getElementById('editStatus').value = status;
   
   const form = document.getElementById('editProductForm');
   form.action = `/admin/products/${id}/edit`;
-  
+
   showModal('editProductModal');
 }
 
-function deleteProduct(id, name) {
-  document.getElementById('deleteProductName').textContent = name;
-  document.getElementById('deleteProductForm').action = `/admin/products/${id}/delete`;
-  showModal('deleteProductModal');
+// 圖片管理功能
+function openImageManager(productId, imageUrl) {
+  currentProductId = productId;
+  currentImageUrl = imageUrl;
+  newImageUrl = null;
+  
+  // 顯示當前圖片
+  const currentDisplay = document.getElementById('currentImageDisplay');
+  if (imageUrl) {
+    currentDisplay.innerHTML = `<img src="${imageUrl}" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
+    document.getElementById('removeImageBtn').style.display = 'inline-block';
+  } else {
+    currentDisplay.innerHTML = `
+      <i class="bi bi-image" style="font-size: 3rem; color: #6c757d;"></i>
+      <p class="text-muted mt-2">暫無圖片</p>
+    `;
+    document.getElementById('removeImageBtn').style.display = 'none';
+  }
+  
+  // 清除上傳區域
+  clearPreview();
+  document.getElementById('imageUrlInput').value = '';
+  
+  // 顯示模態
+  showModal('imageManagerModal');
+}
+
+// 文件上傳處理
+document.addEventListener('DOMContentLoaded', function() {
+  const uploadInput = document.getElementById('imageUploadInput');
+  if (uploadInput) {
+    uploadInput.addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) {
+        uploadFile(file);
+      }
+    });
+  }
+  
+  // 圖片懸停效果
+  const style = document.createElement('style');
+  style.textContent = `
+    .product-image-container:hover .image-change-overlay {
+      opacity: 1 !important;
+    }
+    .upload-area.drag-over {
+      border-color: #0d6efd !important;
+      background-color: rgba(13, 110, 253, 0.1) !important;
+    }
+  `;
+  document.head.appendChild(style);
+});
+
+function uploadFile(file) {
+  if (!file.type.startsWith('image/')) {
+    showToast('錯誤', '請選擇有效的圖片文件', 'error');
+    return;
+  }
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  showUploadProgress(true);
+  
+  fetch('/api/upload/image', {
+    method: 'POST',
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    showUploadProgress(false);
+    if (data.error) {
+      showToast('錯誤', data.error, 'error');
+    } else {
+      newImageUrl = data.url;
+      showPreview(data.url);
+      showToast('成功', data.message, 'success');
+    }
+  })
+  .catch(error => {
+    showUploadProgress(false);
+    showToast('錯誤', '上傳失敗', 'error');
+  });
+}
+
+function showPreview(url) {
+  document.getElementById('uploadPlaceholder').style.display = 'none';
+  document.getElementById('previewArea').style.display = 'block';
+  document.getElementById('newImagePreview').src = url;
+}
+
+function clearPreview() {
+  document.getElementById('uploadPlaceholder').style.display = 'block';
+  document.getElementById('previewArea').style.display = 'none';
+  document.getElementById('imageUploadInput').value = '';
+  newImageUrl = null;
+}
+
+function previewUrl() {
+  const url = document.getElementById('imageUrlInput').value.trim();
+  if (url) {
+    newImageUrl = url;
+    showPreview(url);
+  }
+}
+
+function removeImage() {
+  if (confirm('確定要移除這張圖片嗎？')) {
+    saveImageUpdate('');
+  }
+}
+
+function saveImage() {
+  const url = newImageUrl || document.getElementById('imageUrlInput').value.trim();
+  if (url) {
+    saveImageUpdate(url);
+    location.reload();
+  } else {
+    showToast('錯誤', '請選擇圖片或輸入圖片URL', 'error');
+  }
+}
+
+function saveImageUpdate(imageUrl) {
+  if (!currentProductId) return;
+  
+  const formData = new FormData();
+  formData.append('picture', imageUrl);
+  
+  fetch(`/admin/products/${currentProductId}/edit`, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json'
+    },
+    body: formData
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.error) {
+      showToast('錯誤', data.error, 'error');
+    } else {
+      showToast('成功', '圖片更新成功', 'success');
+      hideModal('imageManagerModal');
+      // 更新頁面中的圖片顯示
+      updateProductImageInTable(currentProductId, imageUrl);
+    }
+  })
+  .catch(error => {
+    showToast('錯誤', '更新失敗', 'error');
+  });
+}
+
+function updateProductImageInTable(productId, imageUrl) {
+  // 找到對應的圖片容器並更新
+  const containers = document.querySelectorAll('.product-image-container');
+  containers.forEach(container => {
+    const img = container.querySelector('img[onclick*="' + productId + '"]') || 
+                container.querySelector('div[onclick*="' + productId + '"]');
+    if (img) {
+      const parent = img.parentElement;
+      if (imageUrl) {
+        parent.innerHTML = `
+          <img src="${imageUrl}" alt="Product Image" class="product-image-preview" style="width: 100%; height: 100%; object-fit: cover; border-radius: 5px; cursor: pointer;" onclick="openImageManager(${productId}, '${imageUrl}')">
+          <div class="position-absolute top-0 end-0 image-change-overlay" style="opacity: 0; background: rgba(0,0,0,0.7); border-radius: 50%; width: 20px; height: 20px; margin: -5px;">
+            <i class="bi bi-camera text-white" style="font-size: 0.7rem; margin: 2px;"></i>
+          </div>
+        `;
+      } else {
+        parent.innerHTML = `
+          <div class="bg-light d-flex align-items-center justify-content-center product-image-placeholder" style="width: 100%; height: 100%; border-radius: 5px; cursor: pointer;" onclick="openImageManager(${productId}, '')">
+            <i class="bi bi-image text-muted"></i>
+          </div>
+          <div class="position-absolute top-0 end-0 image-change-overlay" style="opacity: 0; background: rgba(0,0,0,0.7); border-radius: 50%; width: 20px; height: 20px; margin: -5px;">
+            <i class="bi bi-camera text-white" style="font-size: 0.7rem; margin: 2px;"></i>
+          </div>
+        `;
+      }
+    }
+  });
+}
+
+// 拖拽功能
+function handleDragOver(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('uploadArea').classList.add('drag-over');
+}
+
+function handleDragLeave(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('uploadArea').classList.remove('drag-over');
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  document.getElementById('uploadArea').classList.remove('drag-over');
+  
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    uploadFile(files[0]);
+  }
+}
+
+function showUploadProgress(show) {
+  if (show) {
+    document.body.style.cursor = 'wait';
+    document.getElementById('saveImageBtn').disabled = true;
+  } else {
+    document.body.style.cursor = 'default';
+    document.getElementById('saveImageBtn').disabled = false;
+  }
+}
+
+function toggleProductStatus(id, name, currentStatus) {
+  const action = currentStatus === 1 ? '隱藏' : '顯示';
+  const newStatus = currentStatus === 1 ? 2 : 1;
+  
+  document.getElementById('toggleProductName').textContent = name;
+  document.getElementById('toggleAction').textContent = action;
+  
+  document.getElementById('confirmToggle').onclick = function() {
+    fetch(`/admin/products/${id}/toggle-status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
+      },
+      body: `status=${newStatus}`
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.error) {
+        showToast('錯誤', data.error, 'error');
+      } else {
+        showToast('成功', data.message, 'success');
+        window.location.reload();
+      }
+      hideModal('toggleStatusModal');
+    })
+    .catch(error => {
+      showToast('錯誤', '操作失敗', 'error');
+      hideModal('toggleStatusModal');
+    });
+  };
+  
+  showModal('toggleStatusModal');
 }
 
 // Auto-hide modals after form submission

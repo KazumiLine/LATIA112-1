@@ -69,18 +69,18 @@ class AgentBuilder:
         # Configure global settings
         Settings.llm = get_llm()
         Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
-
-        self.chat_store = SimpleChatStore()
-        chat_store_path = os.path.join(os.getcwd(), "storage", "chat_store.json")
-        # self.chat_store.from_persist_path(chat_store_path)
-        self.memory = ChatMemoryBuffer.from_defaults(chat_store=self.chat_store, chat_store_key=user_id, token_limit=4000)
-
         tools_builder = ToolsBuilder(store_id, user_id)
+        self.tools = tools_builder.build_tools()
 
-        self.agent = ReActAgent(system_prompt=PROMPT, tools=tools_builder.build_tools(), memory=self.memory, llm=Settings.llm, verbose=True, max_iterations=3)
+    async def update_info(self, store_id: int, user_id: str):
+        self.chat_store = SimpleChatStore()
+        # chat_store_path = os.path.join(os.getcwd(), "storage", "chat_store.json")
+        # self.chat_store.from_persist_path(chat_store_path)
+        self.memory = ChatMemoryBuffer.from_defaults(chat_store=self.chat_store, chat_store_key=str(user_id), token_limit=4000)
+        self.agent = ReActAgent(system_prompt=PROMPT, tools=self.tools, memory=self.memory, llm=Settings.llm, verbose=True, max_iterations=3)
         self.ctx = Context(self.agent)
-        self.ctx.set("store_id", store_id)
-        self.ctx.set("user_id", user_id)
+        await self.ctx.set("store_id", store_id)
+        await self.ctx.set("user_id", user_id)
 
     async def chat(self, user_input: str) -> str:
         handler = self.agent.run(user_input, context=self.ctx, memory=self.memory)
